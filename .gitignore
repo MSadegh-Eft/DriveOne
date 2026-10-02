@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+.env
+
+# Local data and model artifacts
+data/
+checkpoints/
+weights/
+cache/
+outputs/
+runs/
+wandb/
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+
+# Local tooling
+.DS_Store
+.vscode/
+.idea/
+
+# Locally generated due-diligence reports
+reports/
