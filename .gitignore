@@ -9,7 +9,7 @@ env/
 .env
 
 # Local data and model artifacts
-data/
+/data/
 checkpoints/
 weights/
 cache/
@@ -28,3 +28,11 @@ wandb/
 
 # Locally generated due-diligence reports
 reports/
+
+# Verifier and smoke-test manifests
+manifests/
+
+# Python build artifacts
+*.egg-info/
+build/
+dist/

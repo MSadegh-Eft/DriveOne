@@ -1,0 +1,56 @@
+protocol_version: refav-spatiotemporal-v1
+name: refav_referred_track_ranking
+purpose: "Custom fixed-frame diagnostic; not the official RefAV leaderboard task"
+
+source:
+  url: https://github.com/cainand/refav
+  paper_url: https://arxiv.org/abs/2505.20981
+  argoverse_scenario_mining_url: https://argoverse.github.io/user-guide/tasks/scenario_mining.html
+  repository_commit: "5c5be6439ce59b61a31d56431a79a8a04bba33fa"
+  dataset_artifact: "scenario_mining_val_annotations.feather sha256:e461e51057fdf347a11bdd60609e7de0b0bd8d0eb199314b3fd73c50106d48c9"
+  argoverse_api_version: "av2==0.3.6"
+  tracker_artifact: "UNAVAILABLE_OFFICIAL_SCENARIO_MINING_EXPORT"
+  split_manifest_sha256: "94150fb8c2a8d0dafc914e78f9f06f9b7e5887a3b5beb173bc7aa42d1092dc47"
+  license: "RefAV repository MIT; Argoverse 2 data terms apply separately"
+
+# Keep this outside Git. The verifier never downloads the full sensor dataset.
+data:
+  root: data/refav
+  records_file: null
+  split_manifest: official_argoverse2_log_split
+  split_manifest_file: source/official_log_split_manifest.json
+  expected_protocol: spatio_temporal_tracks
+
+candidate_protocol:
+  decision_timestamps: one_timestamp_per_example
+  positive_label: 0
+  positive_name: REFERRED_OBJECT
+  hard_negative_labels: [1, 2]
+  hard_negative_names: [RELATED_OBJECT, OTHER_OBJECT]
+  candidate_pool: all_tracker_tracks_at_timestamp
+  candidate_ids: randomized_before_model_input
+  candidate_features_allowed: [rendered_candidate_crop, projected_box, raw_tracker_category_if_prepinned]
+  candidate_features_excluded: [label, name, score, timestamp_ns, future_timestamp, is_positive, track_id]
+  official_filter: max_50m_and_drivable_area
+  primary_target: multi_positive_referred_track
+  top1_is_secondary_diagnostic: true
+
+split_protocol:
+  split_unit: log_id
+  train_validation_test: log_disjoint
+  query_holdout: normalized_prompt_template_disjoint
+  near_duplicate_check: normalized_prompt_and_log_deduplication
+
+metrics:
+  official_when_available: [HOTA-Temporal, HOTA-Track, Timestamp_Balanced_Accuracy, Log_Balanced_Accuracy]
+  custom_diagnostics: [per_frame_average_precision, per_track_average_precision, recall_at_k, nll, brier, ece]
+
+verification:
+  require_camera_association: true
+  require_reproducible_candidate_pool: true
+  reject_missing_required_fields: true
+  reject_malformed_array_lengths: true
+  report_oracle_candidate_coverage: true
+  two_seeds_after_smoke_test: true
+  require_pinned_provenance: true
+  require_official_split_manifest: true
