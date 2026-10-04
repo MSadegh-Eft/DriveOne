@@ -20,3 +20,12 @@
 | Strict mode | Verifier mode that returns exit `2` until every configured gate passes |
 | Tracker artifact | Reproducible output of an object tracker, including candidate IDs/scores/geometry |
 | Oracle coverage | Fraction of target instances that are present in the candidate pool before scoring |
+| Calibration | Whether a reported confidence matches the observed frequency of being correct |
+| Data contract | The exact rules for what one row means, which fields are required, and which fields may enter a model |
+| Ego frame | Coordinates measured relative to the vehicle; city-frame tracker positions are converted into this frame |
+| Leakage | Information reaches the model that would not be available at the intended decision time, or directly reveals the answer |
+| Manifest | A derived data table plus hashes and settings that identify exactly how it was made |
+| Pooled feature | One vector summarizing an image; it removes the spatial grid used by patch tokens |
+| Patch token | One vector for a local image patch, usually arranged as a spatial sequence |
+| Provenance | Where an artifact came from, including source URL, revision, version, and hash |
+| ROI | Region of interest; here the official map-based area/filter used by the preparation code |

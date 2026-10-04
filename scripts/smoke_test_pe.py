@@ -88,7 +88,7 @@ def main() -> int:
             "device": str(device),
             "image_size": image_size,
             "context_length": getattr(model, "context_length", None),
-            "text_model_path": "PE-Core has no text tower; tokenizer output is an external fusion input",
+            "text_model_path": "not_run_by_this_vision_tower_smoke_test",
             "tokenizer_context_length": tokenizer.context_length,
             "text_token_count": len(text_tokens),
             "text_token_ids": text_tokens,
@@ -104,7 +104,7 @@ def main() -> int:
             result["checkpoint_note"] = "Checkpoint loaded through official VisionTransformer.from_config. Record package/repository/checkpoint revisions with the run manifest."
         else:
             result["warnings"].append("The model was not pretrained; rerun with --pretrained before using these values as evidence.")
-        result["warnings"].append("PE-Core is vision-only; DriveOne must define and benchmark its question encoder separately.")
+        result["warnings"].append("This command loads VisionTransformer only; it does not test the official CLIP text encoder.")
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         result["warnings"].append("The requested configuration did not complete the official vision smoke test.")

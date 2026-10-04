@@ -1,27 +1,35 @@
 # DriveOne
 
-DriveOne is currently a **feasibility-gate repository**, not a trained driving model. Its immediate purpose is to determine whether a valid, reproducible RefAV referred-track ranking experiment can be constructed before implementing a scorer, temporal model, trajectory model, or distillation pipeline.
+This repository is the **small feasibility study** for DriveOne. It is not a driving model yet. We first ask a narrower question:
 
-## Read in this order
+> Can a model use a RefAV question and an image to rank the referred object above the other tracked objects in the same scene?
 
-1. [[Project Overview]] — the research question and the deliberately narrow scope.
-2. [[Repository Map]] — where each source file fits.
-3. [[Architecture and Data Flow]] — how a command moves through configuration, loading, validation, and reporting.
-4. [[RefAV Data Contract]] — what a candidate record means and what is forbidden as model input.
-5. [[Code Walkthrough - refav_contract]] — the reusable Python library.
-6. [[Code Walkthrough - verify_refav]] — the command-line audit program.
-7. [[Code Walkthrough - smoke_test_pe]] — the optional Perception Encoder interface check.
-8. [[Tests and Validation]] — what is actually tested today.
-9. [[Current Status and Next Steps]] — what passed, what failed, and the next dependency.
-10. [[Supporting Files]] — the small packaging, policy, documentation, and Git files.
+This first question is useful because it can disprove the proposed candidate interface before we spend time on temporal models, trajectories, Qwen, or distillation.
 
-## The one-sentence mental model
+## Start here
 
-The repository takes a local RefAV-like export, normalizes it into explicit candidate records, checks whether the records support a leakage-controlled ranking study, records provenance and hashes, and refuses strict readiness when critical evidence is missing.
+Read [[Development Roadmap]] first. It gives both reading order and experiment order. Then read:
 
-## Current decision
+1. [[Project Overview]] — what we are trying to learn and what we are deliberately not claiming.
+2. [[Repository Map]] — one-line purpose of every important file.
+3. [[Architecture and Data Flow]] — how the files connect when a command runs.
+4. [[RefAV Data Contract]] — the exact meaning of one candidate row and the leakage rules.
+5. [[Code Walkthrough - refav_tracker]] — how public tracker output becomes the pilot manifest.
+6. [[Code Walkthrough - refav_contract]] — how files are loaded, normalized, checked, and hashed.
+7. [[Code Walkthrough - verify_refav]] — the command that turns those checks into a pass/fail audit.
+8. [[Code Walkthrough - smoke_test_pe]] — what the PE interface check really measures.
+9. [[Tests and Validation]] — what is tested and what is still untested.
+10. [[Current Status and Next Steps]] — the current evidence and the next experiment.
 
-The data gate is **not passed**. The official scenario-mining annotation file that was inspected contains ground-truth relevance labels and geometry, but it is not a tracker-produced candidate artifact and has no camera association or tracker confidence. The repository records this result instead of silently treating annotations as model candidates.
+## Current state in plain language
+
+The public tracker and camera assets were used to build a small two-log manifest. Projection works for the retained rows, but most candidate rows have no prompt-specific relevance label: 2,040 of 2,129 rows are unmatched. The strict structural audit passes, but this is **not enough evidence for a model result**. The next step is to run controls on the manifest and report the unmatched stratum clearly.
+
+The PE smoke test found 576 visual patch tokens of width 1024 and a 1024-dimensional pooled image output for `PE-Core-L14-336`. The current script loads the PE vision tower only; it does not test the official CLIP text encoder. Therefore the vault does not claim that PE-Core has no text tower.
+
+## One-sentence mental model
+
+Raw tracker and camera files go through the preparation adapter, become a fixed candidate manifest, pass through the contract checker, and then feed simple ranking controls. Only if those controls are trustworthy do we add the small DriveOne scorer.
 
 ## Important links
 

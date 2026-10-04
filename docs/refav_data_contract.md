@@ -108,12 +108,12 @@ The data gate passes only when the verifier confirms:
 The official PE configuration supports `PE-Core-L14-336`, whose vision tower
 uses 336 px input, patch size 14, and returns 576 patch tokens of width 1024
 after removing the class token (`[1, 576, 1024]` in the pinned checkpoint).
-The pooled output is `[1, 1024]`. PE-Core is vision-only: the model exposes no
-native text tower or model context length. The repository's `SimpleTokenizer`
-has a default context length of 77, but its token IDs are only an external
-input to a future DriveOne question encoder. The fusion design must therefore
-define, implement, and benchmark that question encoder separately; it cannot
-claim that PE-Core itself provides image/text alignment.
+The pooled output is `[1, 1024]`. The smoke script loads the PE vision tower
+only, so it does not test the official CLIP text path. The official repository
+also exposes a CLIP configuration for this model with text context length 32.
+The script's standalone `SimpleTokenizer` defaults to 77 and is not evidence
+about the CLIP text interface. The fusion design must define and benchmark its
+question encoder explicitly.
 
 ## Executed feasibility audit (2026-10-03)
 
@@ -173,6 +173,7 @@ The pretrained PE smoke test completed on CPU with report hash
 `98a7a8214d3bda9b53a9e75e4298e6c9196b6b36d4492bca590070fab2894f51`:
 `PE-Core-L14-336` returned `[1, 577, 1024]` including the class token,
 `[1, 576, 1024]` patch tokens, and `[1, 1024]` pooled features. The checkpoint
-has no native text tower; the official tokenizer is an external 77-token input
-interface. The next model step must therefore add and measure a separate
-question encoder before claiming language conditioning.
+The smoke script measured only the vision object. The official repository's
+CLIP text path was not run, and the script's 77-token tokenizer result must
+not be treated as the official CLIP context length. The next model step must
+measure the chosen question encoder before claiming language conditioning.

@@ -6,6 +6,13 @@ The first milestone is deliberately narrow: establish a reproducible, non-distil
 
 ## Current next step
 
+The public-tracker pilot manifest now exists outside Git. Before adding a
+DriveOne scorer, reproduce that manifest, inspect its audit, and run the
+control-only ranking study. The pilot has many unmatched tracker rows, so do
+not treat an unmatched row as a negative without an explicit protocol.
+
+The exact reading and experiment order is in [`docs/obsidian/Development Roadmap.md`](docs/obsidian/Development%20Roadmap.md).
+
 Prepare the pinned public Valeo4Cast validation tracks into the derived pilot
 manifest, then run the dependency-light RefAV feasibility verifier:
 

@@ -1,25 +1,27 @@
 # Learning Path
 
-## First session: understand the goal
+This is a short study plan. You do not need to read every line before running a command.
 
-Read [[Project Overview]], then [[RefAV Data Contract]]. Explain in your own words why the same row can contain a target label for evaluation but must not expose that label to the model.
+## Session 1 — the question (20–30 minutes)
 
-## Second session: trace a command
+Read [[Project Overview]] and [[Glossary]]. Goal: explain why the first task is *referred-track ranking*, not “driving” or “grounding” in the broad sense.
 
-Read [[Architecture and Data Flow]] and [[Code Walkthrough - verify_refav]]. Run the verifier on an empty directory and inspect the JSON. Then run it on a small trusted export.
+## Session 2 — the data contract (30–45 minutes)
 
-## Third session: understand normalization
+Read [[RefAV Data Contract]] and [[Code Walkthrough - refav_tracker]]. Goal: explain the difference between a tracker candidate, a ground-truth label, a hard negative, and an unmatched track.
 
-Read [[Code Walkthrough - refav_contract]]. Focus on `_flatten_refav_pickle`, the array-length check, `_group_key`, and `inspect_records`. Use the unit tests as executable examples.
+## Session 3 — follow the audit (30–45 minutes)
 
-## Fourth session: understand the model boundary
+Read [[Architecture and Data Flow]], then [[Code Walkthrough - refav_contract]] and [[Code Walkthrough - verify_refav]]. Goal: trace one file from disk to the JSON audit. Run the unit tests while reading.
 
-Read [[Code Walkthrough - smoke_test_pe]]. Identify exactly what it measures and what it leaves untested. This prevents “the backbone loaded” from being confused with “the proposed model works.”
+## Session 4 — check the visual backbone (20–30 minutes)
 
-## Fifth session: understand the stop decision
+Read [[Code Walkthrough - smoke_test_pe]]. Goal: know the tensor shapes the script measured, and know why those shapes do not prove a useful model.
 
-Read [[Current Status and Next Steps]] and [[Decision Log]]. The project is currently waiting on a reproducible tracker candidate artifact. This is the correct place to solve the next problem.
+## Session 5 — reproduce before extending (45–60 minutes)
 
-## Later expansion
+Read [[Tests and Validation]] and [[Current Status and Next Steps]]. Re-run the manifest audit and the controls when they are implemented. Goal: decide whether the candidate interface is trustworthy.
 
-When the gate passes, add notes for candidate construction, crop projection, baseline implementations, metric definitions, and model training. Keep each note linked to the code and record decisions in [[Decision Log]].
+## Session 6 — only after the gate (later)
+
+Read the future experiment notes added for candidate-only controls, pooled PE, patch PE, and the small fusion scorer. Do not study Qwen, temporal input, trajectories, or distillation until the gate in [[Development Roadmap]] passes.

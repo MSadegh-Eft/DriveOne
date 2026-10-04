@@ -32,7 +32,7 @@ This is the human protocol for the first experiment. It defines gate order, cand
 
 ## `docs/refav_data_contract.md`
 
-This is the formal contract and the record of the actual 2026-10-03 audit. Unlike a README promise, it records the observed Feather schema, artifact hashes, projection sanity check, PE environment blocker, and the conclusion that the data gate is not passed.
+This is the formal contract and the record of the actual 2026-10-03/04 audits. Unlike a README promise, it records the observed schemas, artifact hashes, projection check, PE shape result, and the limits of the current pilot.
 
 ## `.gitignore`
 

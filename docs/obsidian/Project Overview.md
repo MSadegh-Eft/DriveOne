@@ -36,11 +36,11 @@ The first gate requires all of the following:
 5. Log-disjoint splits and a defensible prompt holdout can be constructed.
 6. The frozen PE interface is measured before a fusion model is written.
 
-The strict verifier encodes these as a stop gate. A nonzero exit is useful evidence: it tells us which prerequisite is missing.
+The strict verifier encodes these as a stop gate. A nonzero exit is useful evidence: it tells us which prerequisite is missing. A zero exit means the files satisfy the structural checks; it does **not** mean that the model is accurate or that the benchmark is scientifically strong.
 
 ## Why the code is small
 
-The code is intentionally infrastructure-first. A small validator can expose a fatal data problem much more cheaply than training a multimodal model. The repository currently has a data-contract library, a verifier CLI, an optional PE smoke test, configuration, tests, and explanatory docs.
+The code is intentionally infrastructure-first. A small validator can expose a fatal data problem much more cheaply than training a multimodal model. The repository currently has a data-contract library, a public-tracker preparation adapter, a verifier CLI, an optional PE smoke test, configuration, tests, and explanatory docs.
 
 ## Source of truth
 

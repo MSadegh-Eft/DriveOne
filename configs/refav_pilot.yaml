@@ -70,5 +70,6 @@ pe_smoke:
   device: cpu
   patch_shape: [1, 576, 1024]
   pooled_shape: [1, 1024]
-  native_text_tower: false
-  tokenizer_context_length: 77
+  smoke_script_text_path: not_run
+  official_clip_text_context_length: 32
+  standalone_tokenizer_context_length: 77
