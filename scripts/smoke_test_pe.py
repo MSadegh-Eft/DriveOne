@@ -47,6 +47,7 @@ def main() -> int:
         from PIL import Image
         import core.vision_encoder.pe as pe
         import core.vision_encoder.transforms as transforms
+        from core.vision_encoder.tokenizer import SimpleTokenizer
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         result["warnings"].append("Install the official perception_models dependencies before running the pretrained smoke test.")
@@ -80,11 +81,17 @@ def main() -> int:
             synchronize(torch, device)
             pooled_latency_ms = (time.perf_counter() - start) * 1000
 
+        tokenizer = SimpleTokenizer()
+        text_tokens = tokenizer.encode(args.text)
         result.update({
             "status": "ok",
             "device": str(device),
             "image_size": image_size,
             "context_length": getattr(model, "context_length", None),
+            "text_model_path": "PE-Core has no text tower; tokenizer output is an external fusion input",
+            "tokenizer_context_length": tokenizer.context_length,
+            "text_token_count": len(text_tokens),
+            "text_token_ids": text_tokens,
             "vision_dtype": str(next(model.parameters()).dtype),
             "features_with_cls_shape": shape(features_with_cls),
             "features_without_cls_shape": shape(features_without_cls),
@@ -97,6 +104,7 @@ def main() -> int:
             result["checkpoint_note"] = "Checkpoint loaded through official VisionTransformer.from_config. Record package/repository/checkpoint revisions with the run manifest."
         else:
             result["warnings"].append("The model was not pretrained; rerun with --pretrained before using these values as evidence.")
+        result["warnings"].append("PE-Core is vision-only; DriveOne must define and benchmark its question encoder separately.")
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         result["warnings"].append("The requested configuration did not complete the official vision smoke test.")

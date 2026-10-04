@@ -12,6 +12,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 pe = ["torch", "pillow"]
+refav = ["numpy", "pandas", "pyarrow", "scipy", "av2==0.3.6"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
