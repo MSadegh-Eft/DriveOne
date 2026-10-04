@@ -6,14 +6,27 @@ The first milestone is deliberately narrow: establish a reproducible, non-distil
 
 ## Current next step
 
-Run the dependency-light RefAV feasibility verifier before downloading large data or training a model:
+Prepare the pinned public Valeo4Cast validation tracks into the derived pilot
+manifest, then run the dependency-light RefAV feasibility verifier:
 
 ```bash
-python scripts/verify_refav.py
-python scripts/verify_refav.py --records /path/to/local/refav_export.pkl --output runs/refav_manifest.json --strict
+conda run -n refav python scripts/prepare_refav_tracker.py \
+  --tracker /ehsan/m.sadegh/driveone_assets/refav/extracted/data/track/for_val_and_test/val_tracking.pkl \
+  --annotations /data/sadegh/driveone/data/refav/pilot/refav_val_two_logs.feather \
+  --sensor-root /ehsan/m.sadegh/driveone_assets/refav/av2_sensor_clean/val \
+  --logs 20dd185d-b4eb-3024-a17a-b4e5d8b15b65 02a00399-3857-444e-8db3-a8f58489c394 \
+  --output /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot.feather \
+  --summary /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_summary.json
+
+conda run -n refav python scripts/verify_refav.py \
+  --records /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot.feather \
+  --output /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_audit.json \
+  --strict
 ```
 
-Before the strict command can pass, replace the `PIN_BEFORE_RUN` values in `configs/refav_pilot.yaml` and provide the official log split manifest. The first command is expected to report `not_ready` until a small official scenario-mining export is placed under `data/refav/`. The verifier does not download the full Argoverse 2 sensor dataset.
+The verifier does not download the full Argoverse 2 sensor dataset. The
+manifest is a custom referred-track ranking diagnostic, not an official RefAV
+leaderboard submission.
 
 ## Initial milestone
 

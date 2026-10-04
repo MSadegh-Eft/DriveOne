@@ -42,9 +42,30 @@ yaw
 camera/frame association when available
 raw tracker category when explicitly available
 distance to ego in meters and `is_drivable` after AV2 map projection
+match status and matched RefAV track UUID
+projection status and projected image box
 ```
 
 The official spatio-temporal pickle format is a mapping from `(log_id, prompt)` to a list of frame dictionaries. Each frame contains N-length arrays for object fields. The verifier rejects unequal array lengths rather than silently truncating them.
+
+The public Valeo4Cast artifact uses `{log_id: [frame, ...]}` and stores
+predictions in the city frame because the published tracker was run with
+`--ego_coord`. The adapter first applies the inverse `city_SE3_egovehicle`
+pose to every candidate, then matches same-category candidates to annotation
+cuboids by one-to-one Hungarian assignment with a 2 m ego-frame XY threshold.
+Matching raw city coordinates to RefAV ego-frame annotations produces zero
+matches and is therefore invalid.
+
+The candidate label is transferred only when the matched ground-truth UUID is
+present in the prompt-specific RefAV annotation rows. Candidates that match a
+ground-truth object outside that prompt are `MATCHED_UNANNOTATED_GT`; candidates
+with no match are `UNMATCHED_TRACK`. Both retain a null relevance label and are
+reported separately. They are never relabeled as `OTHER_OBJECT`.
+
+The pilot applies the AV2 maximum-range and RefAV ROI masks to tracker cuboids
+before writing candidates. It chooses the ring camera with the largest visible
+projected cuboid and the nearest image within 100 ms. Every retained candidate
+has an image association; projected-box status is reported separately.
 
 ## Fixed pilot candidate pool
 
@@ -84,7 +105,15 @@ The data gate passes only when the verifier confirms:
 
 ## PE smoke-test note
 
-The official PE configuration supports `PE-Core-L14-336`, whose vision tower uses 336 px input, patch size 14, 1024 hidden width, and 1024 output dimension; the text context is 32 tokens. The official downstream vision API exposes `forward_features`, but the repository's example of dense token output uses PE-Lang/Spatial. The pilot must verify the exact PE-Core tensor shape and whether the question path uses pooled text or token-level text before defining the fusion interface.
+The official PE configuration supports `PE-Core-L14-336`, whose vision tower
+uses 336 px input, patch size 14, and returns 576 patch tokens of width 1024
+after removing the class token (`[1, 576, 1024]` in the pinned checkpoint).
+The pooled output is `[1, 1024]`. PE-Core is vision-only: the model exposes no
+native text tower or model context length. The repository's `SimpleTokenizer`
+has a default context length of 77, but its token IDs are only an external
+input to a future DriveOne question encoder. The fusion design must therefore
+define, implement, and benchmark that question encoder separately; it cannot
+claim that PE-Core itself provides image/text alignment.
 
 ## Executed feasibility audit (2026-10-03)
 
@@ -118,3 +147,32 @@ The PE smoke script was run in the base environment and correctly stopped:
 the official PE package requires Python >=3.11 and PyTorch/weights were not
 installed. No PE tensor shape is treated as verified until that isolated
 environment test completes.
+
+## Public tracker pilot (2026-10-04)
+
+The public Valeo4Cast repository was pinned to commit
+`dce207347c140ed5cdaeac6c217eb00ee0634e71`. The published
+`data/track/for_val_and_test/val_tracking.pkl` artifact was extracted from the
+public `data.zip` archive and hashed as
+`8cb35baf5c63ff673d9fe00a4b734d23e6b583e2150e51c4ca8d0d9351636b15`.
+
+Using two RefAV validation logs and their public AV2 pose, ROI, calibration, and
+camera assets, the adapter produced 2,129 candidates in 10 fixed prompt/frame
+groups across two logs. Every group contains at least one referred candidate
+and one matched negative; all 2,129 candidates have a camera image association
+and an explicit projection status. The derived Feather manifest hash is
+`34530d7074ea28df99a6391343dfe0a5617b935fb8c5be86cadf8134adf750f6`.
+
+Only 89 candidates received prompt-specific labels (10 referred, 4 related, 75
+other); 2,040 remain unmatched tracker candidates. This low labeled-candidate
+fraction is a central limitation of the pilot and must be reported in every
+ranking result. Candidate-only and unknown-candidate stress tests are mandatory
+before interpreting any model gain.
+
+The pretrained PE smoke test completed on CPU with report hash
+`98a7a8214d3bda9b53a9e75e4298e6c9196b6b36d4492bca590070fab2894f51`:
+`PE-Core-L14-336` returned `[1, 577, 1024]` including the class token,
+`[1, 576, 1024]` patch tokens, and `[1, 1024]` pooled features. The checkpoint
+has no native text tower; the official tokenizer is an external 77-token input
+interface. The next model step must therefore add and measure a separate
+question encoder before claiming language conditioning.

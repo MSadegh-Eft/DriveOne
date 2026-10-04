@@ -83,6 +83,17 @@ def _coerce_label(value: Any) -> Any:
     return value
 
 
+def _is_missing(value: Any) -> bool:
+    """Scalar missingness check that is safe for numpy/list-valued fields."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value == ""
+    if isinstance(value, float):
+        return math.isnan(value)
+    return False
+
+
 def normalize_record(record: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize one flat track record without discarding unknown fields."""
     output: dict[str, Any] = dict(record)
@@ -262,6 +273,8 @@ def inspect_records(records: Iterable[Mapping[str, Any]], source_path: str | Non
     camera_rows = 0
     leakage_fields = Counter()
     temporal_presence = Counter()
+    match_statuses = Counter()
+    projection_statuses = Counter()
     official_filter = Counter()
     duplicate_keys: list[tuple[Any, Any, Any]] = []
     seen_candidate_keys: set[tuple[Any, Any, Any]] = set()
@@ -270,8 +283,11 @@ def inspect_records(records: Iterable[Mapping[str, Any]], source_path: str | Non
     timestamp_values: dict[tuple[Any, Any], list[int]] = defaultdict(list)
 
     for row in rows:
+        unknown_candidate = row.get("match_status") in {"UNMATCHED_TRACK", "MATCHED_UNANNOTATED_GT"}
         for field in REQUIRED_FIELDS:
-            if field not in row or row[field] in (None, ""):
+            if field == "label" and unknown_candidate:
+                continue
+            if field not in row or _is_missing(row[field]):
                 missing[field] += 1
         if row.get("log_id") is not None:
             logs.add(row["log_id"])
@@ -280,13 +296,17 @@ def inspect_records(records: Iterable[Mapping[str, Any]], source_path: str | Non
             templates.add(template_key(row["prompt"]))
         if row.get("label") in LABEL_NAMES:
             labels[LABEL_NAMES[row["label"]]] += 1
-        elif row.get("label") not in (None, ""):
+        elif not _is_missing(row.get("label")):
             invalid_labels[str(row.get("label"))] += 1
-        if any(field in row and row[field] not in (None, "") for field in CAMERA_FIELDS):
+        if any(field in row and not _is_missing(row[field]) for field in CAMERA_FIELDS):
             camera_rows += 1
         if "is_positive" in row:
             value = row["is_positive"]
             temporal_presence["true" if value is True else "false" if value is False else "ambiguous"] += 1
+        if row.get("match_status") not in (None, ""):
+            match_statuses[str(row["match_status"])] += 1
+        if row.get("projection_status") not in (None, ""):
+            projection_statuses[str(row["projection_status"])] += 1
         if isinstance(row.get("distance_m"), (int, float)) and isinstance(row.get("is_drivable"), bool):
             if math.isfinite(float(row["distance_m"])):
                 official_filter["eligible" if row["distance_m"] <= 50.0 and row["is_drivable"] else "filtered"] += 1
@@ -348,6 +368,10 @@ def inspect_records(records: Iterable[Mapping[str, Any]], source_path: str | Non
         "missing_required_fields": dict(missing),
         "label_counts": dict(labels),
         "temporal_presence_counts": dict(temporal_presence),
+        "match_status_counts": dict(match_statuses),
+        "projection_status_counts": dict(projection_statuses),
+        "projected_record_count": projection_statuses.get("PROJECTED", 0),
+        "projection_fraction": projection_statuses.get("PROJECTED", 0) / len(rows) if rows else 0.0,
         "official_filter_counts": dict(official_filter),
         "official_filter_reproducible": official_filter["missing_or_invalid_geometry"] == 0 and bool(official_filter),
         "camera_associated_record_count": camera_rows,

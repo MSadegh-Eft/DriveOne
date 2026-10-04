@@ -9,7 +9,12 @@ source:
   repository_commit: "5c5be6439ce59b61a31d56431a79a8a04bba33fa"
   dataset_artifact: "scenario_mining_val_annotations.feather sha256:e461e51057fdf347a11bdd60609e7de0b0bd8d0eb199314b3fd73c50106d48c9"
   argoverse_api_version: "av2==0.3.6"
-  tracker_artifact: "UNAVAILABLE_OFFICIAL_SCENARIO_MINING_EXPORT"
+  tracker_repository_url: https://github.com/valeoai/valeo4cast
+  tracker_repository_commit: "dce207347c140ed5cdaeac6c217eb00ee0634e71"
+  tracker_artifact: "Valeo4Cast data/track/for_val_and_test/val_tracking.pkl sha256:8cb35baf5c63ff673d9fe00a4b734d23e6b583e2150e51c4ca8d0d9351636b15"
+  tracker_artifact_source: "https://drive.google.com/drive/folders/1qzHdi6wIexiyrF03pZHPzz5h1LssqeX4?usp=sharing; data.zip file id 1Fv3EPN_ychJYuHU8pwhqTgKxrTfpbARO"
+  pilot_annotation_artifact: "refav_val_two_logs.feather sha256:04b5e5bacf33e4b380cd761411820040257cb7c87b7809694224982d7142580f"
+  pilot_manifest_artifact: "refav_tracker_pilot.feather sha256:34530d7074ea28df99a6391343dfe0a5617b935fb8c5be86cadf8134adf750f6"
   split_manifest_sha256: "94150fb8c2a8d0dafc914e78f9f06f9b7e5887a3b5beb173bc7aa42d1092dc47"
   license: "RefAV repository MIT; Argoverse 2 data terms apply separately"
 
@@ -31,9 +36,12 @@ candidate_protocol:
   candidate_ids: randomized_before_model_input
   candidate_features_allowed: [rendered_candidate_crop, projected_box, raw_tracker_category_if_prepinned]
   candidate_features_excluded: [label, name, score, timestamp_ns, future_timestamp, is_positive, track_id]
-  official_filter: max_50m_and_drivable_area
+  official_filter: max_50m_and_refav_roi
   primary_target: multi_positive_referred_track
   top1_is_secondary_diagnostic: true
+  matching_rule: "same-category one-to-one Hungarian assignment at <=2m ego-frame XY distance"
+  unmatched_status: UNMATCHED_TRACK
+  camera_policy: "largest projected ring-camera cuboid; nearest image <=100ms"
 
 split_protocol:
   split_unit: log_id
@@ -54,3 +62,13 @@ verification:
   two_seeds_after_smoke_test: true
   require_pinned_provenance: true
   require_official_split_manifest: true
+
+pe_smoke:
+  config: PE-Core-L14-336
+  official_repository_commit: "3e352cca660658d4b5c90f42a7808b11469e4c66"
+  report_artifact: "pe_core_l14_336_cpu_smoke.json sha256:98a7a8214d3bda9b53a9e75e4298e6c9196b6b36d4492bca590070fab2894f51"
+  device: cpu
+  patch_shape: [1, 576, 1024]
+  pooled_shape: [1, 1024]
+  native_text_tower: false
+  tokenizer_context_length: 77
