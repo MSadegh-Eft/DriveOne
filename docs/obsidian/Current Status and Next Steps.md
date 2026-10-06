@@ -37,6 +37,22 @@ Before calling the result a benchmark, fix or explicitly label the current targe
 4. Report labeled and unmatched candidate strata separately.
 5. Only after these controls are reproducible, add the patch-token scorer.
 
+## First control result
+
+The deterministic control run used the repaired manifest and two seeds. On the
+165 groups with at least one labeled positive and one labeled negative,
+tracker-score ranking reached mAP 0.508 and Recall@1 0.248. The same result
+was about 0.509 mAP when unknown candidates were removed from the metric, so
+this shortcut is not caused only by the large unmatched stratum. Random ranking
+was 0.018–0.031 mAP with all candidates; nearest-candidate and projected-box
+area controls were 0.073 and 0.060 mAP.
+
+This is a candidate-generation warning, not DriveOne evidence. The tracker
+confidence field remains excluded from model features. Before a learned PE
+scorer, add more log-disjoint data and evaluate score-matched hard negatives.
+The control JSON is external and identified by SHA-256
+`243e524d28012a5088e177ffe3d02f21cb91847582414d8e44991aab2c7c9b83`.
+
 ## Stop rules
 
 Stop and redesign if the candidate pool cannot be defined independently of relevance labels, referred tracks cannot be rendered in a camera frame, the tracker artifact cannot be reproduced, or candidate-only metadata explains the result.

@@ -10,7 +10,7 @@ This page answers two questions: **what should I read?** and **why are we doing 
 | 1. Prepare data | Run `prepare_refav_tracker.py` on pinned tracker, annotation, pose, calibration, and camera files | The scorer needs a candidate pool that exists before the relevance label is known | A hashed Feather manifest and summary JSON | Candidate construction can be repeated from the same inputs |
 | 2. Audit data | Run `verify_refav.py --strict` and inspect the warnings | This catches missing fields, duplicate candidates, split overlap, and obvious leakage | Machine-readable audit | Structural checks pass and limitations are recorded |
 | 3. Check PE | Run `smoke_test_pe.py` with the official PE environment | We need to know what tensors the backbone actually returns before writing a fusion model | Shape/configuration report | Patch and pooled paths are both available and measured |
-| 4. Run controls | Compare random, tracker-score, candidate-only, metadata-only, task-ID, and pooled-PE ranking | These controls tell us whether the image and language add information beyond shortcuts | Control metrics and calibration | The controls run on identical candidate files |
+| 4. Run controls | Compare random, tracker-score, candidate geometry, projected area, and category-frequency ranking | These controls tell us whether the candidate pool already contains an easy answer | Control metrics and coverage report | Shortcut controls are recorded and hard negatives are defined |
 | 5. Minimal DriveOne | Add frozen PE patch tokens, one question encoder, one fusion block, and one scorer | This is the cheapest test of the central mechanism | Two-seed ranking result | Patch model beats pooled PE and task ID on held-out logs/templates by the preregistered margin |
 | 6. Stress the result | Add hard negatives, candidate-count shift, and log/template holdout | A gain only in the easy pilot is weak evidence | Shift and calibration report | The gain survives the planned shifts |
 | 7. Expand carefully | Only then consider more frames, PE-Spatial, other cameras, or other datasets | Each extension changes compute or task semantics and needs its own baseline | Separate evaluation track | The added question is justified by the previous result |
@@ -43,4 +43,4 @@ This page answers two questions: **what should I read?** and **why are we doing 
 
 ## Current project boundary
 
-Do not implement Qwen, distillation, temporal frames, trajectories, NAVSIM/GTRS, Waymo, PE-Spatial, or deployment optimization before Stage 5 and Stage 6 pass. Those tasks answer different scientific questions and would make it harder to identify why a result changed.
+Do not implement Qwen, distillation, temporal frames, trajectories, NAVSIM/GTRS, Waymo, PE-Spatial, or deployment optimization before the shortcut controls, score-matched hard negatives, and log-disjoint data pass. Those tasks answer different scientific questions and would make it harder to identify why a result changed.

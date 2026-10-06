@@ -59,3 +59,13 @@ Negative prompts and frames with ambiguous `None` targets are not coerced into a
 Required controls include log-disjoint train/validation/test splits, prompt-template provenance, held-out prompt families where externally defined, matched candidate sets, hard negatives, two random seeds after a one-seed smoke test, and end-to-end latency measurement.
 
 A lexical prompt normalization is only a prompt-disjoint diagnostic. It must not be called unseen-template generalization unless template-family IDs or a preregistered clustering method are available.
+
+## Current control-only result
+
+The repaired two-log manifest was used for deterministic controls before any
+learned model. Tracker confidence ranked the labeled target candidates with
+approximately 0.508 mAP, while random ranking was approximately 0.018–0.031
+mAP. This is a strong candidate-generation shortcut. It is not evidence for
+DriveOne because tracker confidence is excluded from learned features and the
+pilot has only two logs. The next control must use more logs and
+score-matched hard negatives.

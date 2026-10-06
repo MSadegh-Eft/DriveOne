@@ -13,6 +13,19 @@ not treat an unmatched row as a negative without an explicit protocol.
 
 The exact reading and experiment order is in [`docs/obsidian/Development Roadmap.md`](docs/obsidian/Development%20Roadmap.md).
 
+The first deterministic control run is available outside Git:
+
+```bash
+conda run -n refav python scripts/run_refav_controls.py \
+  --records /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_repaired.feather \
+  --output /ehsan/m.sadegh/driveone_assets/refav/refav_controls_repaired.json \
+  --seeds 0 1
+```
+
+It found a strong tracker-confidence shortcut, so the next data step is to
+expand log coverage and add score-matched hard negatives before training a PE
+scorer.
+
 Prepare the pinned public Valeo4Cast validation tracks into the derived pilot
 manifest, then run the dependency-light RefAV feasibility verifier:
 
