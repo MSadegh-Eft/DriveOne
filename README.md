@@ -22,12 +22,12 @@ conda run -n refav python scripts/prepare_refav_tracker.py \
   --annotations /data/sadegh/driveone/data/refav/pilot/refav_val_two_logs.feather \
   --sensor-root /ehsan/m.sadegh/driveone_assets/refav/av2_sensor_clean/val \
   --logs 20dd185d-b4eb-3024-a17a-b4e5d8b15b65 02a00399-3857-444e-8db3-a8f58489c394 \
-  --output /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot.feather \
-  --summary /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_summary.json
+  --output /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_repaired.feather \
+  --summary /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_repaired_summary.json
 
 conda run -n refav python scripts/verify_refav.py \
-  --records /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot.feather \
-  --output /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_audit.json \
+  --records /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_repaired.feather \
+  --output /ehsan/m.sadegh/driveone_assets/refav/refav_tracker_pilot_repaired_audit.json \
   --strict
 ```
 

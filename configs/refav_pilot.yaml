@@ -14,7 +14,7 @@ source:
   tracker_artifact: "Valeo4Cast data/track/for_val_and_test/val_tracking.pkl sha256:8cb35baf5c63ff673d9fe00a4b734d23e6b583e2150e51c4ca8d0d9351636b15"
   tracker_artifact_source: "https://drive.google.com/drive/folders/1qzHdi6wIexiyrF03pZHPzz5h1LssqeX4?usp=sharing; data.zip file id 1Fv3EPN_ychJYuHU8pwhqTgKxrTfpbARO"
   pilot_annotation_artifact: "refav_val_two_logs.feather sha256:04b5e5bacf33e4b380cd761411820040257cb7c87b7809694224982d7142580f"
-  pilot_manifest_artifact: "refav_tracker_pilot.feather sha256:34530d7074ea28df99a6391343dfe0a5617b935fb8c5be86cadf8134adf750f6"
+  pilot_manifest_artifact: "refav_tracker_pilot_repaired.feather sha256:18658d04a723d4ab16799da8cf50ce7de1eabd3b7ff4dadb696cf74a287841ce"
   split_manifest_sha256: "94150fb8c2a8d0dafc914e78f9f06f9b7e5887a3b5beb173bc7aa42d1092dc47"
   license: "RefAV repository MIT; Argoverse 2 data terms apply separately"
 
@@ -27,7 +27,7 @@ data:
   expected_protocol: spatio_temporal_tracks
 
 candidate_protocol:
-  decision_timestamps: one_timestamp_per_example
+  decision_timestamps: all_aligned_prompt_timestamps
   positive_label: 0
   positive_name: REFERRED_OBJECT
   hard_negative_labels: [1, 2]
@@ -41,7 +41,8 @@ candidate_protocol:
   top1_is_secondary_diagnostic: true
   matching_rule: "same-category one-to-one Hungarian assignment at <=2m ego-frame XY distance"
   unmatched_status: UNMATCHED_TRACK
-  camera_policy: "largest projected ring-camera cuboid; nearest image <=100ms"
+  camera_policy: "shared ring_front_center frame per group; nearest image <=100ms"
+  timestamp_selection: "annotation prompt timestamps intersected with tracker, pose, and shared-camera timestamps; no relevance-label checks"
 
 split_protocol:
   split_unit: log_id
@@ -66,10 +67,11 @@ verification:
 pe_smoke:
   config: PE-Core-L14-336
   official_repository_commit: "3e352cca660658d4b5c90f42a7808b11469e4c66"
-  report_artifact: "pe_core_l14_336_cpu_smoke.json sha256:98a7a8214d3bda9b53a9e75e4298e6c9196b6b36d4492bca590070fab2894f51"
-  device: cpu
+  report_artifact: "pe_core_l14_336_clip_gpu2.json sha256:362fa0ccb0c9d6bf30f75d5dc58eb872561b0e9803cc11fca5cfed6c2fc58472"
+  device: "cuda_visible_device_2"
   patch_shape: [1, 576, 1024]
   pooled_shape: [1, 1024]
-  smoke_script_text_path: not_run
+  official_clip_text_path: tested
   official_clip_text_context_length: 32
+  text_feature_shape: [1, 1024]
   standalone_tokenizer_context_length: 77

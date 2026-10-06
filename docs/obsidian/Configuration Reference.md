@@ -19,7 +19,7 @@ This section records URLs, repository revision, dataset artifact hash, AV2 API v
 
 ## `candidate_protocol`
 
-This is the experimental contract: one timestamp, all eligible tracker tracks, label meanings, hard negatives, randomized IDs, allowed/excluded fields, official filtering, and the multi-positive target. The `top1_is_secondary_diagnostic` flag prevents a single winner metric from becoming the headline by accident.
+This is the experimental contract: all aligned prompt timestamps, all eligible tracker tracks, one shared front-center image per group, label meanings, hard negatives, randomized IDs, allowed/excluded fields, official filtering, and the multi-positive target. The `top1_is_secondary_diagnostic` flag prevents a single winner metric from becoming the headline by accident.
 
 ## `split_protocol`
 

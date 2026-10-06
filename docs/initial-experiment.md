@@ -12,11 +12,12 @@ The initial experiment evaluates a **custom RefAV referred-track ranking diagnos
 
 ## Candidate contract
 
-- One decision timestamp per example initially.
+- Every prompt timestamp aligned to tracker, pose, and the shared camera frame is retained initially; timestamp selection must not inspect relevance labels.
 - Candidate pool: all eligible tracker-produced tracks at that timestamp in the same log.
 - Positive label: `REFERRED_OBJECT` (label `0`); multiple positives are allowed.
 - Hard negatives: `RELATED_OBJECT` (label `1`) and nearby `OTHER_OBJECT` (label `2`).
 - Candidate IDs are randomized before model input.
+- Every candidate in a ranking group uses the same `ring_front_center` image and camera timestamp; out-of-view candidates remain explicit records.
 - Relevance labels, relevance names, tracker confidence, timestamps, future values, and IDs are excluded from learned candidate features; confidence and metadata may appear only in explicitly named shortcut controls.
 - Apply the official 50 m and drivable-area filtering when the required AV2 geometry is available. Otherwise label the result custom and report oracle candidate coverage.
 

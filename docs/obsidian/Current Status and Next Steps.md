@@ -17,15 +17,15 @@ The annotation-only Feather is not a tracker candidate artifact. It has relevanc
 
 The public Valeo4Cast repository was pinned and its validation tracking artifact was extracted outside Git. The adapter in `src/driveone/data/refav_tracker.py` converts city-frame tracks to the ego frame, performs deterministic same-category 2 m matching, applies the AV2 ROI/range filter, and associates retained candidates with a ring-camera image and projected box.
 
-The two-log pilot contains 2,129 candidates in 10 prompt/frame groups. It has 10 referred, 4 related, and 75 other prompt-specific labels; 2,040 candidates remain explicitly unmatched. The strict verifier passes its configured structural checks, but this sparse label coverage is a material limitation. It is not a model result and is not enough for the final claim.
+The repaired two-log pilot contains 446,810 candidates in 1,660 prompt/frame groups. It has 165 groups with both a referred object and a labeled negative. It has 165 referred, 161 related, and 14,344 other prompt-specific labels; 432,140 candidates remain explicitly unmatched. The strict verifier passes its configured structural checks, but the two-log scope and sparse labels are still limitations. This is not a model result and is not enough for the final claim.
 
 ## PE result
 
-The smoke test passes for the vision path. `PE-Core-L14-336` exposes 576 patch tokens of width 1024 and a 1024-dimensional pooled output. The current script loads the PE vision tower only; it does not run the official CLIP text path. The official repository has a text configuration with context length 32, while the script's standalone `SimpleTokenizer` defaults to 77. These are different interfaces and must not be confused.
+The smoke test passes through the official CLIP path on host GPU 2. `PE-Core-L14-336` exposes 576 patch tokens of width 1024, pooled image features of width 1024, and text features of width 1024. The official text context is 32 tokens. The standalone tokenizer's default of 77 is not the model context used in this run.
 
 ## Immediate next step
 
-Run a small control-only ranking experiment using the generated pilot manifest, not the raw tracker pickle. The manifest is external and identified by its SHA-256 in `configs/refav_pilot.yaml`.
+Run a small control-only ranking experiment using the repaired manifest, not the raw tracker pickle. The manifest is external and identified by its SHA-256 in `configs/refav_pilot.yaml`.
 
 Before calling the result a benchmark, fix or explicitly label the current target-informed timestamp selection: `select_decision_timestamps` chooses a frame because it contains both a referred and a negative match. That is acceptable for a feasibility check, but it is not yet an unbiased final sampling rule.
 

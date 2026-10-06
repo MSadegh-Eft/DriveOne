@@ -35,6 +35,7 @@ RING_CAMERAS = (
     "ring_side_left",
     "ring_side_right",
 )
+DEFAULT_CAMERA = "ring_front_center"
 
 
 class TrackerPreparationError(RuntimeError):
@@ -279,46 +280,43 @@ def project_candidate(
     camera_models: Mapping[str, tuple[Any, Any]],
     camera_files: Mapping[str, tuple[list[int], list[Path]]],
     *,
+    camera_name: str = DEFAULT_CAMERA,
     camera_tolerance_ns: int = 100_000_000,
 ) -> CameraProjection:
-    """Choose the ring camera with the largest visible projected cuboid."""
-    best: tuple[float, CameraProjection] | None = None
+    """Project one candidate into one deterministic, shared camera frame."""
     corners = _box_corners(center_ego, size_lwh, yaw_ego)
-    for camera_name in RING_CAMERAS:
-        model_entry = camera_models.get(camera_name)
-        if model_entry is None:
-            continue
-        image_entry = _camera_index(camera_files, timestamp_ns, camera_name, camera_tolerance_ns)
-        if image_entry is None:
-            continue
-        image_path, image_timestamp = image_entry
-        camera, intrinsics = model_entry
-        uv, points_cam, _ = camera.project_ego_to_img(corners)
-        valid_depth = np.isfinite(uv).all(axis=1) & (points_cam[:, 2] > 0.1)
-        if not valid_depth.any():
-            continue
-        x0, y0 = np.min(uv[valid_depth], axis=0)
-        x1, y1 = np.max(uv[valid_depth], axis=0)
-        x0 = max(0.0, min(float(intrinsics.width_px), float(x0)))
-        x1 = max(0.0, min(float(intrinsics.width_px), float(x1)))
-        y0 = max(0.0, min(float(intrinsics.height_px), float(y0)))
-        y1 = max(0.0, min(float(intrinsics.height_px), float(y1)))
-        area = max(0.0, x1 - x0) * max(0.0, y1 - y0)
-        if area <= 1.0:
-            continue
-        result = CameraProjection(
-            camera_name=camera_name,
-            image_path=str(image_path.resolve()),
-            image_timestamp_ns=int(image_timestamp),
-            timestamp_delta_ns=abs(int(image_timestamp) - int(timestamp_ns)),
-            projected_box=(x0, y0, x1, y1),
-            status="PROJECTED",
-        )
-        if best is None or area > best[0]:
-            best = (area, result)
-    if best is not None:
-        return best[1]
-    return CameraProjection(None, None, None, None, None, "OUT_OF_VIEW_OR_MISSING_FRAME")
+    model_entry = camera_models.get(camera_name)
+    image_entry = _camera_index(camera_files, timestamp_ns, camera_name, camera_tolerance_ns)
+    if model_entry is None or image_entry is None:
+        return CameraProjection(None, None, None, None, None, "MISSING_SHARED_CAMERA_FRAME")
+
+    image_path, image_timestamp = image_entry
+    camera, intrinsics = model_entry
+    uv, points_cam, _ = camera.project_ego_to_img(corners)
+    valid_depth = np.isfinite(uv).all(axis=1) & (points_cam[:, 2] > 0.1)
+    common = {
+        "camera_name": camera_name,
+        "image_path": str(image_path.resolve()),
+        "image_timestamp_ns": int(image_timestamp),
+        "timestamp_delta_ns": abs(int(image_timestamp) - int(timestamp_ns)),
+    }
+    if not valid_depth.any():
+        return CameraProjection(**common, projected_box=None, status="OUT_OF_VIEW")
+
+    x0, y0 = np.min(uv[valid_depth], axis=0)
+    x1, y1 = np.max(uv[valid_depth], axis=0)
+    x0 = max(0.0, min(float(intrinsics.width_px), float(x0)))
+    x1 = max(0.0, min(float(intrinsics.width_px), float(x1)))
+    y0 = max(0.0, min(float(intrinsics.height_px), float(y0)))
+    y1 = max(0.0, min(float(intrinsics.height_px), float(y1)))
+    area = max(0.0, x1 - x0) * max(0.0, y1 - y0)
+    if area <= 1.0:
+        return CameraProjection(**common, projected_box=None, status="OUT_OF_VIEW")
+    return CameraProjection(
+        **common,
+        projected_box=(x0, y0, x1, y1),
+        status="PROJECTED",
+    )
 
 
 def _load_pose_table(sensor_root: Path) -> Any:
@@ -333,36 +331,29 @@ def select_decision_timestamps(
     tracker_frames: list[dict[str, Any]],
     annotations: Any,
     pose_table: Any,
-    roi_map: Any,
     *,
-    distance_threshold_m: float = 2.0,
-) -> dict[str, int]:
-    """Select the earliest frame per prompt with a matched positive and negative."""
-    _, _, _, quat_to_mat, SE3, _ = _require_runtime_dependencies()
-    selected: dict[str, int] = {}
+    camera_files: Mapping[str, tuple[list[int], list[Path]]],
+    camera_tolerance_ns: int = 100_000_000,
+) -> dict[str, list[int]]:
+    """Select all aligned prompt timestamps without inspecting relevance labels.
+
+    Prompt timestamps define the RefAV observation window.  Tracker, pose, and
+    shared-camera availability are infrastructure checks only; labels are not
+    used to choose or discard timestamps.
+    """
+    tracker_by_timestamp = {int(frame["timestamp_ns"]): frame for frame in tracker_frames}
+    selected: dict[str, list[int]] = {}
     for prompt in annotations["prompt"].drop_duplicates().tolist():
         prompt_annotations = annotations[annotations["prompt"] == prompt]
-        for frame in tracker_frames:
-            timestamp = int(frame["timestamp_ns"])
-            if timestamp not in pose_table.index:
+        timestamps = []
+        for timestamp in sorted(set(int(value) for value in prompt_annotations["timestamp_ns"].tolist())):
+            if timestamp not in tracker_by_timestamp or timestamp not in pose_table.index:
                 continue
-            at_time = prompt_annotations[prompt_annotations["timestamp_ns"] == timestamp]
-            if len(at_time) == 0:
+            if _camera_index(camera_files, timestamp, DEFAULT_CAMERA, camera_tolerance_ns) is None:
                 continue
-            ego = global_to_ego(np.asarray(frame["translation_m"], dtype=float), pose_table.loc[timestamp], SE3, quat_to_mat)
-            matches = match_candidates(ego[:, :2], np.asarray(frame["name"]), at_time, distance_threshold_m=distance_threshold_m)
-            roi_mask = roi_mask_for_frame(frame, roi_map)
-            eligible = roi_mask & (np.linalg.norm(ego[:, :2], axis=1) < 50.0)
-            matched_ids = {
-                match.gt_track_uuid
-                for candidate_index, match in matches.items()
-                if eligible[candidate_index]
-            }
-            positive_ids = set(at_time.loc[at_time["mining_category"] == "REFERRED_OBJECT", "track_uuid"].astype(str))
-            negative_ids = set(at_time.loc[at_time["mining_category"].isin(("RELATED_OBJECT", "OTHER_OBJECT")), "track_uuid"].astype(str))
-            if matched_ids & positive_ids and matched_ids & negative_ids:
-                selected[prompt] = timestamp
-                break
+            timestamps.append(timestamp)
+        if timestamps:
+            selected[str(prompt)] = timestamps
     return selected
 
 
@@ -375,14 +366,21 @@ def prepare_records(
     distance_threshold_m: float = 2.0,
     camera_tolerance_ns: int = 100_000_000,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Create one fixed-timestamp candidate group per usable prompt."""
+    """Create one candidate group for every aligned prompt/timestamp pair."""
     pd, _, _, quat_to_mat, SE3, _ = _require_runtime_dependencies()
     annotations = pd.read_feather(annotation_path)
     wanted_logs = list(log_ids)
     annotations = annotations[annotations["log_id"].isin(wanted_logs)].copy()
     trackers = load_tracker_pickle(tracker_path, wanted_logs)
     records: list[dict[str, Any]] = []
-    summary: dict[str, Any] = {"logs": {}, "selected_prompt_count": 0, "unusable_prompts": []}
+    summary: dict[str, Any] = {
+        "selection_rule": "all annotation prompt timestamps intersected with tracker, pose, and shared-camera timestamps; no relevance-label checks",
+        "camera_policy": DEFAULT_CAMERA,
+        "logs": {},
+        "selected_prompt_count": 0,
+        "selected_group_count": 0,
+        "unusable_prompts": [],
+    }
     for log_id in wanted_logs:
         if log_id not in trackers or log_id not in sensor_roots:
             raise TrackerPreparationError(f"Missing tracker or sensor root for {log_id}")
@@ -396,18 +394,23 @@ def prepare_records(
             trackers[log_id],
             log_annotations,
             pose_table,
-            roi_map,
-            distance_threshold_m=distance_threshold_m,
+            camera_files=camera_files,
+            camera_tolerance_ns=camera_tolerance_ns,
         )
-        summary["logs"][log_id] = {"prompt_count": int(log_annotations["prompt"].nunique()), "selected_prompts": selected}
+        summary["logs"][log_id] = {
+            "prompt_count": int(log_annotations["prompt"].nunique()),
+            "selected_prompts": selected,
+        }
         summary["selected_prompt_count"] += len(selected)
+        summary["selected_group_count"] += sum(len(timestamps) for timestamps in selected.values())
         summary["unusable_prompts"].extend(
             {"log_id": log_id, "prompt": str(prompt)}
             for prompt in log_annotations["prompt"].drop_duplicates().tolist()
             if prompt not in selected
         )
         frames_by_timestamp = {int(frame["timestamp_ns"]): frame for frame in trackers[log_id]}
-        for prompt, timestamp in selected.items():
+        for prompt, timestamps in selected.items():
+          for timestamp in timestamps:
             frame = frames_by_timestamp[timestamp]
             pose_row = pose_table.loc[timestamp]
             pose = _pose_se3(pose_row, SE3, quat_to_mat)
@@ -432,6 +435,7 @@ def prepare_records(
                     sensor_root,
                     camera_models,
                     camera_files,
+                    camera_name=DEFAULT_CAMERA,
                     camera_tolerance_ns=camera_tolerance_ns,
                 )
                 distance_m = float(np.linalg.norm(ego_positions[index, :2]))

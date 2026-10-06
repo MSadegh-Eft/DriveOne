@@ -157,23 +157,22 @@ public `data.zip` archive and hashed as
 `8cb35baf5c63ff673d9fe00a4b734d23e6b583e2150e51c4ca8d0d9351636b15`.
 
 Using two RefAV validation logs and their public AV2 pose, ROI, calibration, and
-camera assets, the adapter produced 2,129 candidates in 10 fixed prompt/frame
-groups across two logs. Every group contains at least one referred candidate
-and one matched negative; all 2,129 candidates have a camera image association
-and an explicit projection status. The derived Feather manifest hash is
-`34530d7074ea28df99a6391343dfe0a5617b935fb8c5be86cadf8134adf750f6`.
+camera assets, the repaired adapter kept all aligned prompt timestamps and one
+shared `ring_front_center` image per group. It produced 446,810 candidates in
+1,660 groups across two logs. Every candidate has a shared camera-image
+association; 138,770 have a visible projected box and 308,040 are explicitly
+`OUT_OF_VIEW`. There are 165 groups with both a referred object and a labeled
+negative. The repaired Feather manifest hash is
+`18658d04a723d4ab16799da8cf50ce7de1eabd3b7ff4dadb696cf74a287841ce`.
 
-Only 89 candidates received prompt-specific labels (10 referred, 4 related, 75
-other); 2,040 remain unmatched tracker candidates. This low labeled-candidate
-fraction is a central limitation of the pilot and must be reported in every
-ranking result. Candidate-only and unknown-candidate stress tests are mandatory
-before interpreting any model gain.
+Only 14,670 candidates received prompt-specific labels (165 referred, 161
+related, 14,344 other); 432,140 remain unmatched tracker candidates. This
+limitation must be reported in every ranking result. The two logs are enough to
+test the pipeline, but not enough for a generalization claim.
 
-The pretrained PE smoke test completed on CPU with report hash
-`98a7a8214d3bda9b53a9e75e4298e6c9196b6b36d4492bca590070fab2894f51`:
+The pretrained PE CLIP smoke test completed on host GPU 2 with report hash
+`362fa0ccb0c9d6bf30f75d5dc58eb872561b0e9803cc11fca5cfed6c2fc58472`.
 `PE-Core-L14-336` returned `[1, 577, 1024]` including the class token,
-`[1, 576, 1024]` patch tokens, and `[1, 1024]` pooled features. The checkpoint
-The smoke script measured only the vision object. The official repository's
-CLIP text path was not run, and the script's 77-token tokenizer result must
-not be treated as the official CLIP context length. The next model step must
-measure the chosen question encoder before claiming language conditioning.
+`[1, 576, 1024]` patch tokens, `[1, 1024]` pooled image features, and
+`[1, 1024]` text features with official context length 32. Patch, pooled-image,
+and text latency were measured separately; the image input was synthetic.

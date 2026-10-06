@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the official PE-Core-L14-336 pooled and patch interfaces.
+"""Smoke-test the official PE-Core-L14-336 image, patch, and text interfaces.
 
 This script intentionally imports the official ``perception_models`` package at
 runtime. It does not vendor weights or dependencies into DriveOne.
@@ -47,7 +47,6 @@ def main() -> int:
         from PIL import Image
         import core.vision_encoder.pe as pe
         import core.vision_encoder.transforms as transforms
-        from core.vision_encoder.tokenizer import SimpleTokenizer
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         result["warnings"].append("Install the official perception_models dependencies before running the pretrained smoke test.")
@@ -59,7 +58,8 @@ def main() -> int:
 
     device = torch.device(args.device)
     try:
-        model = pe.VisionTransformer.from_config(args.config, pretrained=args.pretrained).to(device).eval()
+        model = pe.CLIP.from_config(args.config, pretrained=args.pretrained).to(device).eval()
+        visual = model.visual
         image_size = model.image_size
         if args.image:
             image = transforms.get_image_transform(image_size)(Image.open(args.image).convert("RGB")).unsqueeze(0)
@@ -71,27 +71,36 @@ def main() -> int:
         with torch.inference_mode():
             synchronize(torch, device)
             start = time.perf_counter()
-            features_with_cls = model.forward_features(image, strip_cls_token=False)
+            features_with_cls = visual.forward_features(image, strip_cls_token=False)
             synchronize(torch, device)
             patch_latency_ms = (time.perf_counter() - start) * 1000
-            features_without_cls = model.forward_features(image, strip_cls_token=True)
+            features_without_cls = visual.forward_features(image, strip_cls_token=True)
             synchronize(torch, device)
             start = time.perf_counter()
-            pooled = model(image)
+            pooled = model.encode_image(image)
             synchronize(torch, device)
             pooled_latency_ms = (time.perf_counter() - start) * 1000
 
-        tokenizer = SimpleTokenizer()
-        text_tokens = tokenizer.encode(args.text)
+            tokenizer = transforms.get_text_tokenizer(model.context_length)
+            text_tokens = tokenizer([args.text], context_length=model.context_length).to(device)
+            synchronize(torch, device)
+            start = time.perf_counter()
+            text_features = model.encode_text(text_tokens)
+            synchronize(torch, device)
+            text_latency_ms = (time.perf_counter() - start) * 1000
         result.update({
             "status": "ok",
             "device": str(device),
             "image_size": image_size,
             "context_length": getattr(model, "context_length", None),
-            "text_model_path": "not_run_by_this_vision_tower_smoke_test",
+            "text_model_path": "official_clip_text_transformer",
             "tokenizer_context_length": tokenizer.context_length,
-            "text_token_count": len(text_tokens),
-            "text_token_ids": text_tokens,
+            "text_token_count": int((text_tokens != 0).sum().item()),
+            "text_sequence_length": int(text_tokens.shape[1]),
+            "text_token_ids": text_tokens[0].detach().cpu().tolist(),
+            "text_features_shape": shape(text_features),
+            "image_features_shape": shape(pooled),
+            "text_forward_latency_ms": text_latency_ms,
             "vision_dtype": str(next(model.parameters()).dtype),
             "features_with_cls_shape": shape(features_with_cls),
             "features_without_cls_shape": shape(features_without_cls),
@@ -101,10 +110,10 @@ def main() -> int:
             "patch_token_count": shape(features_without_cls)[1] if shape(features_without_cls) and len(shape(features_without_cls)) > 1 else None,
         })
         if args.pretrained:
-            result["checkpoint_note"] = "Checkpoint loaded through official VisionTransformer.from_config. Record package/repository/checkpoint revisions with the run manifest."
+            result["checkpoint_note"] = "Checkpoint loaded through official CLIP.from_config. Record package/repository/checkpoint revisions with the run manifest."
         else:
             result["warnings"].append("The model was not pretrained; rerun with --pretrained before using these values as evidence.")
-        result["warnings"].append("This command loads VisionTransformer only; it does not test the official CLIP text encoder.")
+        result["warnings"].append("Patch tokens come from model.visual; pooled image and text features come from the official CLIP path.")
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         result["warnings"].append("The requested configuration did not complete the official vision smoke test.")

@@ -31,7 +31,7 @@ The library accepts aliases so official exports and tracker files can be normali
 
 ## Official annotation versus candidate artifact
 
-The official validation Feather that was inspected has `track_uuid`, `mining_category`, quaternion pose, ego-frame position, object dimensions, and timestamps. It does not have tracker confidence, camera paths, 2D boxes, or a tracker candidate file. This is why the current audit finds relevance groups but still fails the strict pilot gate.
+The official validation Feather that was inspected has `track_uuid`, `mining_category`, quaternion pose, ego-frame position, object dimensions, and timestamps. It does not have tracker confidence, camera paths, 2D boxes, or a tracker candidate file. The public tracker adapter joins this annotation with tracker and camera assets to create a derived diagnostic manifest.
 
 ## Leakage rules
 
@@ -44,7 +44,7 @@ The candidate feature allow-list in the config is deliberately small: rendered c
 - track IDs;
 - any metadata derived from the answer.
 
-The verifier checks only the declared allow-list. A future dataset-construction program must enforce the feature extraction itself.
+The verifier checks only the declared allow-list. A future dataset-construction program must enforce the feature extraction itself. The repaired pilot uses one shared `ring_front_center` image per group; candidates outside that camera view remain in the pool with an explicit `OUT_OF_VIEW` status.
 
 ## Filters and coverage
 
