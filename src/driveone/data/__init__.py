@@ -10,6 +10,7 @@ from .refav_contract import (
     validate_candidate_feature_schema,
     validate_log_disjoint,
 )
+from .refav_splits import build_prompt_log_sets, make_three_way_plan, select_disjoint_log_triplets
 
 __all__ = [
     "REQUIRED_FIELDS",
@@ -20,4 +21,7 @@ __all__ = [
     "template_key",
     "validate_candidate_feature_schema",
     "validate_log_disjoint",
+    "build_prompt_log_sets",
+    "make_three_way_plan",
+    "select_disjoint_log_triplets",
 ]

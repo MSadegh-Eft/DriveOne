@@ -60,14 +60,19 @@ The six-log manifest hash is
 The control result hash is
 `bae30b14125ffa814624dd4a47c4b5981ed957a7d347aa2752aa75ba3a80cebf`.
 
+A deterministic repeated-prompt plan now exists outside Git. It selects nine
+additional logs as three disjoint train/validation/test triplets. Each triplet
+shares two exact prompt strings across all three logs. The plan uses exact
+prompt text only; it does not claim paraphrase or template-family equivalence.
+Its SHA-256 is
+`cba73f6f34a5373bf3a5f69765b78f5eeebf48ad2ebdab38032a204cd7c60f85`.
+
 ## Next task
 
-1. Select additional logs from the full validation annotation table so each
-   split shares prompt families while remaining log-disjoint.
-2. Download only their front-center camera, pose, calibration, map, and
+1. Download only the nine planned logs' front-center camera, pose, calibration, map, and
    annotation assets.
-3. Re-run the fixed score-and-size-matched controls on those groups.
-4. Only if shortcut controls are no longer sufficient should the pooled-PE,
+2. Re-run the fixed score-and-size-matched controls on those groups.
+3. Only if shortcut controls are no longer sufficient should the pooled-PE,
    task-ID, and patch-token models be implemented.
 
 ## Stop rules

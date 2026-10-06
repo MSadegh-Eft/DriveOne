@@ -20,6 +20,7 @@ Read [[Development Roadmap]] first. It gives both reading order and experiment o
 8. [[Code Walkthrough - smoke_test_pe]] — what the PE interface check really measures.
 9. [[Tests and Validation]] — what is tested and what is still untested.
 10. [[Current Status and Next Steps]] — the current evidence and the next experiment.
+11. [[Code Walkthrough - refav_splits]] — how repeated-prompt log splits are selected.
 
 ## Current state in plain language
 

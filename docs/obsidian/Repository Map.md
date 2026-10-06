@@ -10,8 +10,10 @@
 | [`scripts/verify_refav.py`](../../scripts/verify_refav.py) | CLI wrapper that reads config, audits files, writes JSON, and enforces strict mode | `driveone.data.refav_contract` |
 | [`scripts/prepare_refav_tracker.py`](../../scripts/prepare_refav_tracker.py) | Builds a reproducible derived candidate manifest from public tracker output and AV2 assets | `driveone.data.refav_tracker` |
 | [`src/driveone/data/refav_tracker.py`](../../src/driveone/data/refav_tracker.py) | Performs coordinate conversion, matching, filtering, timestamp selection, and camera projection for the derived pilot | `numpy`, `pandas`, `scipy`, `av2` |
+| [`src/driveone/data/refav_splits.py`](../../src/driveone/data/refav_splits.py) | Selects log-disjoint train/validation/test triplets with exact prompt overlap | Python standard library |
 | [`scripts/smoke_test_pe.py`](../../scripts/smoke_test_pe.py) | Optional official PE-Core interface check | `torch`, Pillow, official `perception_models` package |
 | [`scripts/run_refav_controls.py`](../../scripts/run_refav_controls.py) | Runs the deterministic RefAV control suite and writes a JSON result | `driveone.data.refav_contract`, `driveone.eval.refav_metrics` |
+| [`scripts/select_refav_log_plan.py`](../../scripts/select_refav_log_plan.py) | Builds the reproducible repeated-prompt log plan from the full annotation table | `pandas`, `driveone.data.refav_splits` |
 | [`configs/refav_pilot.yaml`](../../configs/refav_pilot.yaml) | Protocol, provenance, candidate restrictions, split rules, and strict requirements | Verifier |
 | [`tests/test_refav_contract.py`](../../tests/test_refav_contract.py) | Unit tests for normalization and contract logic | Data helpers |
 | [`tests/test_refav_tracker.py`](../../tests/test_refav_tracker.py) | Unit tests for one-to-one candidate/annotation matching | Optional tracker dependencies |
