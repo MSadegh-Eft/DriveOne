@@ -5,7 +5,7 @@
 - The repository was created as an isolated DriveOne project.
 - The data contract, verifier, tracker adapter, PE smoke test, controls, tests, and documentation exist.
 - Official RefAV metadata, annotations, tracker output, and AV2 sensor assets were inspected.
-- The code passes fifteen tests in the `refav` environment.
+- The code passes seventeen tests in the `refav` environment.
 - `PE-Core-L14-336` was tested through the official CLIP image and text path on host GPU 2.
 
 ## Repaired candidate protocol
@@ -91,12 +91,36 @@ log-dependent shortcut. The split-control SHA-256 is
 
 ## Next task
 
-1. Implement the frozen-PE pooled and learned task-ID controls on the same
-   manifests and split files.
-2. Measure them first on a small one-seed subset, including end-to-end image
-   loading and PE latency.
-3. Add the patch-token scorer only after the pooled/task-ID controls are
-   reproducible and the split-level shortcuts are reported.
+The first frozen-PE baseline smoke test is now complete. It used 200 rankable
+groups per split from the nine-log plan and one random seed. Pooled PE scored
+0.0967 test mAP; task ID scored 0.0855. On the exact same groups, deterministic
+tracker-score and projected-box-area ranking scored 0.1674 and 0.1678 mAP.
+Pooled PE also had test ECE 0.1522, compared with 0.0538 for metadata-only.
+
+This is an early stop signal. It is not a final rejection because the run is
+small and uses one seed. It does mean that adding patch tokens now would hide
+an unresolved baseline problem. Read [[Code Walkthrough - frozen baselines]]
+and `docs/refav_baseline_smoke.md` before running more model code.
+
+The next experiment is a baseline replication/debugging gate:
+
+The 500-group-per-split replication is now complete. Pooled PE scored 0.0511
+test mAP; tracker-score and projected-box-area controls scored 0.1813 and
+0.1729 on the same candidates. This confirms the early stop at a larger
+subset. Do not add patch tokens or a second seed yet.
+
+The next action is protocol diagnosis:
+
+1. Inspect per-log and candidate-count strata for the 500-group result.
+2. Check whether label transfer and candidate generation make geometry a
+   target proxy or make visual appearance redundant.
+3. Propose a concrete, label-independent candidate-pool repair, if one exists,
+   and rerun deterministic controls after that repair.
+4. Add patch tokens only if a repaired pooled baseline beats the strongest
+   deterministic control by a preregistered margin.
+
+Qwen, temporal input, PE-Spatial, trajectories, distillation, and deployment
+optimization remain deferred.
 
 ## Stop rules
 
@@ -114,3 +138,4 @@ candidate-only shortcut remains competitive after matched hard negatives.
 - `7930e77` — simplified Obsidian roadmap and corrected PE documentation.
 - `cfb2d1e` — label-independent timestamps and shared-camera protocol.
 - `a75b1b8` — leakage-aware deterministic control suite.
+- `19c8859` — frozen-PE subset export, feature extraction, and baseline controls.

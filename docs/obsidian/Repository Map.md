@@ -14,6 +14,9 @@
 | [`scripts/smoke_test_pe.py`](../../scripts/smoke_test_pe.py) | Optional official PE-Core interface check | `torch`, Pillow, official `perception_models` package |
 | [`scripts/run_refav_controls.py`](../../scripts/run_refav_controls.py) | Runs the deterministic RefAV control suite and writes a JSON result | `driveone.data.refav_contract`, `driveone.eval.refav_metrics` |
 | [`scripts/select_refav_log_plan.py`](../../scripts/select_refav_log_plan.py) | Builds the reproducible repeated-prompt log plan from the full annotation table | `pandas`, `driveone.data.refav_splits` |
+| [`scripts/export_refav_subset.py`](../../scripts/export_refav_subset.py) | Exports fixed train/validation/test ranking groups and JSONL files | `pandas`, `pyarrow` |
+| [`scripts/extract_pe_features.py`](../../scripts/extract_pe_features.py) | Extracts frozen PE pooled image and text features for a subset | official `perception_models`, `torch`, Pillow |
+| [`scripts/train_refav_baselines.py`](../../scripts/train_refav_baselines.py) | Trains candidate-only, metadata-only, task-ID, and pooled-PE controls | `torch` |
 | [`configs/refav_pilot.yaml`](../../configs/refav_pilot.yaml) | Protocol, provenance, candidate restrictions, split rules, and strict requirements | Verifier |
 | [`tests/test_refav_contract.py`](../../tests/test_refav_contract.py) | Unit tests for normalization and contract logic | Data helpers |
 | [`tests/test_refav_tracker.py`](../../tests/test_refav_tracker.py) | Unit tests for one-to-one candidate/annotation matching | Optional tracker dependencies |
@@ -21,6 +24,7 @@
 | [`docs/initial-experiment.md`](../../docs/initial-experiment.md) | Human-readable experiment order and controls | Config and contract |
 | [`docs/obsidian/Development Roadmap.md`](Development%20Roadmap.md) | Plain-language reading order and staged research plan | Repository state |
 | [`docs/refav_data_contract.md`](../../docs/refav_data_contract.md) | Formal contract and recorded real-data audit result | Official RefAV/AV2 facts |
+| [`docs/refav_baseline_smoke.md`](../../docs/refav_baseline_smoke.md) | Reproduction record and early gate decision for frozen-PE controls | External subset and PE artifacts |
 | [`README.md`](../../README.md) | Short entry point for contributors | All of the above |
 | [`CONTRIBUTING.md`](../../CONTRIBUTING.md) | Rules that prevent invalid experiments and untracked artifacts | Project policy |
 | [`.gitignore`](../../.gitignore) | Keeps data, weights, reports, manifests, and build artifacts out of Git | Git |

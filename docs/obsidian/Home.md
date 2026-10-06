@@ -21,14 +21,15 @@ Read [[Development Roadmap]] first. It gives both reading order and experiment o
 9. [[Tests and Validation]] — what is tested and what is still untested.
 10. [[Current Status and Next Steps]] — the current evidence and the next experiment.
 11. [[Code Walkthrough - refav_splits]] — how repeated-prompt log splits are selected.
+12. [[Code Walkthrough - frozen baselines]] — how the first pooled-PE and shortcut controls run.
 
 ## Current state in plain language
 
-The public tracker and camera assets were used to build a six-log manifest. It
-contains 2,143,270 candidates in 9,840 groups, with 1,816,120 unmatched rows.
-The strict structural audit passes, but deterministic controls still show a
-projected-size shortcut. This is **not evidence for a model result**. The next
-step is a repeated-prompt, log-disjoint control split before model training.
+The public tracker and camera assets were used to build a nine-log,
+log-disjoint repeated-prompt manifest. The frozen-PE baseline was tested on
+200 and then 500 groups per split. Pooled PE did not beat tracker-score or
+projected-box-area controls, so patch-token modeling is paused while the
+candidate and label protocol is diagnosed.
 
 The PE smoke test found 576 visual patch tokens of width 1024, a
 1024-dimensional pooled image output, and a 1024-dimensional text output for

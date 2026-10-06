@@ -26,8 +26,17 @@ conda run -n refav python scripts/run_refav_controls.py \
 
 It found strong tracker-confidence and projected-size shortcuts. The repeated-
 prompt nine-log split is now built and audited; shortcut strength varies by
-split, so results must remain stratified. The next step is the frozen-PE pooled
-and task-ID controls before adding patch-token fusion.
+split, so results must remain stratified. A first frozen-PE pooled and task-ID
+smoke test is recorded in
+[`docs/refav_baseline_smoke.md`](docs/refav_baseline_smoke.md). Pooled PE does
+not yet beat the strongest deterministic controls, so patch-token modeling is
+paused while the baseline and shortcut protocol are replicated on a larger
+fixed subset.
+
+The 500-group-per-split replication confirms the stop: pooled PE reaches 0.0511
+test mAP, while tracker-score and projected-box-area controls reach 0.1813 and
+0.1729 on the same candidates. The next work is protocol diagnosis and
+candidate redesign, not a larger model.
 
 Prepare the pinned public Valeo4Cast validation tracks into the derived pilot
 manifest, then run the dependency-light RefAV feasibility verifier:

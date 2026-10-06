@@ -29,6 +29,13 @@ source:
   baseline_control_train_artifact: "controls_train.json sha256:aefa14cad4714e61ae8759b882a320520f4f5817b471f4e344ac87139ed2615e"
   baseline_control_validation_artifact: "controls_validation.json sha256:c7631e859d70b33b32cf6f87c56a8df44bf81ee1468ed1ba0c739d44c2d5020c"
   baseline_control_test_artifact: "controls_test.json sha256:503f2edf66070a425fa39463ff2c19322dcc33d76c87aa1c61528f915b525fdc"
+  baseline_replication_subset_manifest_artifact: "refav_subset_manifest.json sha256:0d13f1ffacb06a2bc721e73045078a22eac5cbadcd7e445aa5a7bbe9bb458a3a"
+  baseline_replication_feature_artifact: "pe_core_pooled_features.pt sha256:f52951b1ee355c22b8bebc11156fbdf4bebab583e137bd22d054f7df8b149141"
+  baseline_replication_feature_report_artifact: "pe_core_pooled_features.json sha256:3c0abb03137d5f2ffa1b0a3a9e8d8cefa6f8e4d09ca24d71ebd695a4d4f42174"
+  baseline_replication_result_artifact: "baseline_results_seed0.json sha256:31b51bca0aeeea3052389e9569e267838c3fe57385f552cc12620e0bb1a6da1d"
+  baseline_replication_control_train_artifact: "controls_train.json sha256:9a7a6c7ebf956825607bf0879593c3e35f67b2b210f04e1d4b41314a68556bec"
+  baseline_replication_control_validation_artifact: "controls_validation.json sha256:dc226b0b558dae3788f864c9c41210150a309b53b5a1eb3216e7ca732edab74f"
+  baseline_replication_control_test_artifact: "controls_test.json sha256:a39b28f38bd488f6e92c30cb9285f0df4fc368af76a54e838908642644d88b63"
   split_manifest_sha256: "94150fb8c2a8d0dafc914e78f9f06f9b7e5887a3b5beb173bc7aa42d1092dc47"
   license: "RefAV repository MIT; Argoverse 2 data terms apply separately"
 
@@ -101,3 +108,9 @@ baseline_smoke:
   training_loss: "BCE on labeled candidates; unknown candidates retained for ranking evaluation"
   proceed_to_patch_tokens: false
   reason: "One-seed smoke test does not beat deterministic tracker/geometry controls on the held-out test subset."
+
+baseline_replication:
+  subset_groups_per_split: 500
+  seed: 0
+  proceed_to_patch_tokens: false
+  reason: "The larger one-seed replication confirms the pooled-PE result remains below deterministic tracker/geometry controls."
