@@ -5,7 +5,7 @@
 - The repository was created as an isolated DriveOne project.
 - The data contract, verifier, tracker adapter, PE smoke test, controls, tests, and documentation exist.
 - Official RefAV metadata, annotations, tracker output, and AV2 sensor assets were inspected.
-- The code passes seventeen tests in the `refav` environment.
+- The code passes nineteen tests in the `refav` environment.
 - `PE-Core-L14-336` was tested through the official CLIP image and text path on host GPU 2.
 
 ## Repaired candidate protocol
@@ -139,3 +139,4 @@ candidate-only shortcut remains competitive after matched hard negatives.
 - `cfb2d1e` — label-independent timestamps and shared-camera protocol.
 - `a75b1b8` — leakage-aware deterministic control suite.
 - `19c8859` — frozen-PE subset export, feature extraction, and baseline controls.
+- `3bd966b` — baseline helper tests for fixed feature shape and unknown-row ranking.

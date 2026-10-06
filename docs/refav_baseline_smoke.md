@@ -115,4 +115,12 @@ python scripts/train_refav_baselines.py \
   --features "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/pe_core_pooled_features.pt" \
   --output "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/baseline_results_seed0.json" \
   --device cuda --epochs 12 --seed 0
+
+conda run -n refav python scripts/run_refav_controls.py \
+  --records "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_500/refav_test_subset.feather" \
+  --output "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_500/controls_test.json" \
+  --seeds 0 1 --hard-negative-delta 0.05 --size-matched-log-area-delta 0.2
 ```
+
+For the 200-group smoke result, replace `refav_baseline_subset_500` with
+`refav_baseline_subset_200` and use `--groups-per-split 200` when exporting.
