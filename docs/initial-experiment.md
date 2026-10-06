@@ -62,10 +62,13 @@ A lexical prompt normalization is only a prompt-disjoint diagnostic. It must not
 
 ## Current control-only result
 
-The repaired two-log manifest was used for deterministic controls before any
-learned model. Tracker confidence ranked the labeled target candidates with
-approximately 0.508 mAP, while random ranking was approximately 0.018–0.031
-mAP. This is a strong candidate-generation shortcut. It is not evidence for
-DriveOne because tracker confidence is excluded from learned features and the
-pilot has only two logs. The next control must use more logs and
-score-matched hard negatives.
+The repaired six-log manifest was used for deterministic controls before any
+learned model. On the full candidate pool, tracker-score ranking reached about
+0.286 mAP and projected box area about 0.134 mAP, versus about 0.056 for
+random ranking. On 2,405 score-matched groups, tracker score fell to about
+0.452 while projected box area remained about 0.556. With a fixed 0.20
+log-area tolerance in addition to the score match, projected box area remained
+about 0.605 mAP versus about 0.530 for random ranking across 1,826 groups.
+These are shortcut diagnostics, not DriveOne evidence. The next data step is
+to build a log-disjoint repeated-prompt split and repeat this audit before any
+learned scorer.

@@ -32,11 +32,21 @@ For each object category, it performs one-to-one Hungarian matching using XY dis
 
 ### `select_decision_timestamps`
 
-Chooses the earliest frame for each prompt that has both a matched referred object and a matched negative after the range/ROI filter. This makes the pilot usable, but it also means the current selection uses labels. That target-informed selection must be removed or fixed before a final unbiased benchmark.
+Keeps every annotation prompt timestamp that intersects the tracker, pose, and
+shared-camera timelines. It does not inspect relevance labels, match results,
+or candidate geometry when selecting a timestamp. This removes the earlier
+target-informed sampling shortcut. Groups without a referred object and a
+labeled negative remain in the manifest and are reported as coverage rather
+than silently removed.
 
 ### `project_candidate`
 
-Builds 3-D box corners, projects them into each ring camera, and keeps the camera with the largest visible box. It matches the nearest image within 100 ms. The current code does not perform motion compensation or an occlusion check, and “projected” does not guarantee that the object is visibly present in pixels.
+Builds 3-D box corners, projects them into the fixed `ring_front_center`
+camera, and matches the nearest image within 100 ms. Every candidate in one
+ranking group therefore sees the same frame. Out-of-view candidates remain as
+explicit `OUT_OF_VIEW` rows. The current code does not perform motion
+compensation or an occlusion check, and “projected” does not guarantee that
+the object is visibly present in pixels.
 
 ### `prepare_records`
 

@@ -123,7 +123,64 @@ def _summarize(group_results: list[dict[str, float | int | None]]) -> dict[str, 
     }
 
 
-def run_control_suite(records: Iterable[Mapping[str, Any]], seeds: Iterable[int] = (0, 1)) -> dict[str, Any]:
+def _projected_box_area(row: Mapping[str, Any]) -> float:
+    return _box_area(row.get("projected_box"))
+
+
+def _hard_negative_rows(
+    rows: list[Mapping[str, Any]],
+    score_delta: float,
+    log_area_delta: float | None = None,
+) -> list[Mapping[str, Any]]:
+    """Keep positives and labeled negatives matched to positive metadata.
+
+    The optional area constraint uses ``log1p(projected pixel area)``.  This
+    makes the tolerance approximately multiplicative for visible boxes while
+    keeping zero-area/out-of-view boxes well-defined.  This is an evaluation
+    subset only; these fields are never supplied as model inputs.
+    """
+    positive_scores = []
+    positive_log_areas = []
+    for row in rows:
+        if _label(row.get("label")) != POSITIVE:
+            continue
+        try:
+            positive_scores.append(float(row.get("score")))
+        except (TypeError, ValueError):
+            continue
+        positive_log_areas.append(float(np.log1p(_projected_box_area(row))))
+    if not positive_scores:
+        return []
+    selected = []
+    for row in rows:
+        label = _label(row.get("label"))
+        if label == POSITIVE:
+            selected.append(row)
+            continue
+        if label not in NEGATIVES:
+            continue
+        try:
+            score = float(row.get("score"))
+        except (TypeError, ValueError):
+            continue
+        score_match = min(abs(score - positive_score) for positive_score in positive_scores) <= score_delta
+        if not score_match:
+            continue
+        if log_area_delta is not None:
+            log_area = float(np.log1p(_projected_box_area(row)))
+            area_match = min(abs(log_area - positive_area) for positive_area in positive_log_areas) <= log_area_delta
+            if not area_match:
+                continue
+        selected.append(row)
+    return selected
+
+
+def run_control_suite(
+    records: Iterable[Mapping[str, Any]],
+    seeds: Iterable[int] = (0, 1),
+    hard_negative_delta: float = 0.05,
+    size_matched_log_area_delta: float = 0.2,
+) -> dict[str, Any]:
     """Evaluate deterministic controls while retaining unknown candidates.
 
     Primary ranking metrics use only groups with at least one labeled positive
@@ -148,6 +205,39 @@ def run_control_suite(records: Iterable[Mapping[str, Any]], seeds: Iterable[int]
                 per_group.append(_group_metrics(labels, order))
             results[f"{control}:seed_{seed}"] = _summarize(per_group)
 
+    hard_groups = {
+        key: _hard_negative_rows(rows, hard_negative_delta)
+        for key, rows in groups.items()
+    }
+    hard_groups = {
+        key: rows
+        for key, rows in hard_groups.items()
+        if any(_label(row.get("label")) == POSITIVE for row in rows)
+        and any(_label(row.get("label")) in NEGATIVES for row in rows)
+    }
+    size_matched_groups = {
+        key: _hard_negative_rows(rows, hard_negative_delta, log_area_delta=size_matched_log_area_delta)
+        for key, rows in groups.items()
+    }
+    size_matched_groups = {
+        key: rows
+        for key, rows in size_matched_groups.items()
+        if any(_label(row.get("label")) == POSITIVE for row in rows)
+        and any(_label(row.get("label")) in NEGATIVES for row in rows)
+    }
+
+    def evaluate_subset(subset: Mapping[Any, list[Mapping[str, Any]]]) -> dict[str, Any]:
+        subset_results: dict[str, Any] = {}
+        for seed in seeds:
+            for control in controls:
+                per_group = []
+                for group_index, rows in enumerate(subset.values()):
+                    labels = [_label(row.get("label")) for row in rows]
+                    order = _rank_order(control, rows, int(seed), group_index, category_frequency)
+                    per_group.append(_group_metrics(labels, order))
+                subset_results[f"{control}:seed_{seed}"] = _summarize(per_group)
+        return subset_results
+
     return {
         "protocol": {
             "task": "RefAV referred-track ranking",
@@ -169,4 +259,15 @@ def run_control_suite(records: Iterable[Mapping[str, Any]], seeds: Iterable[int]
             ),
         },
         "results": results,
+        "hard_negative_results": {
+            "score_tolerance": hard_negative_delta,
+            "group_count": len(hard_groups),
+            "results": evaluate_subset(hard_groups),
+        },
+        "score_and_size_matched_results": {
+            "score_tolerance": hard_negative_delta,
+            "log1p_projected_area_tolerance": size_matched_log_area_delta,
+            "group_count": len(size_matched_groups),
+            "results": evaluate_subset(size_matched_groups),
+        },
     }

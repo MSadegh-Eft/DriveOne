@@ -23,9 +23,16 @@ Read [[Development Roadmap]] first. It gives both reading order and experiment o
 
 ## Current state in plain language
 
-The public tracker and camera assets were used to build a small two-log manifest. Projection works for the retained rows, but most candidate rows have no prompt-specific relevance label: 2,040 of 2,129 rows are unmatched. The strict structural audit passes, but this is **not enough evidence for a model result**. The next step is to run controls on the manifest and report the unmatched stratum clearly.
+The public tracker and camera assets were used to build a six-log manifest. It
+contains 2,143,270 candidates in 9,840 groups, with 1,816,120 unmatched rows.
+The strict structural audit passes, but deterministic controls still show a
+projected-size shortcut. This is **not evidence for a model result**. The next
+step is a repeated-prompt, log-disjoint control split before model training.
 
-The PE smoke test found 576 visual patch tokens of width 1024 and a 1024-dimensional pooled image output for `PE-Core-L14-336`. The current script loads the PE vision tower only; it does not test the official CLIP text encoder. Therefore the vault does not claim that PE-Core has no text tower.
+The PE smoke test found 576 visual patch tokens of width 1024, a
+1024-dimensional pooled image output, and a 1024-dimensional text output for
+`PE-Core-L14-336`. The official CLIP text context is 32 tokens. This is an
+interface check, not evidence that the features improve ranking.
 
 ## One-sentence mental model
 

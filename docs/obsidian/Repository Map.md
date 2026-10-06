@@ -8,7 +8,7 @@
 | [`src/driveone/eval/refav_metrics.py`](../../src/driveone/eval/refav_metrics.py) | Computes deterministic ranking controls while keeping unmatched candidates explicit | `numpy` |
 | [`src/driveone/data/__init__.py`](../../src/driveone/data/__init__.py) | Public exports for the data helpers | `refav_contract.py` |
 | [`scripts/verify_refav.py`](../../scripts/verify_refav.py) | CLI wrapper that reads config, audits files, writes JSON, and enforces strict mode | `driveone.data.refav_contract` |
-| [`scripts/prepare_refav_tracker.py`](../../scripts/prepare_refav_tracker.py) | Builds the reproducible two-log derived candidate manifest from public tracker output and AV2 assets | `driveone.data.refav_tracker` |
+| [`scripts/prepare_refav_tracker.py`](../../scripts/prepare_refav_tracker.py) | Builds a reproducible derived candidate manifest from public tracker output and AV2 assets | `driveone.data.refav_tracker` |
 | [`src/driveone/data/refav_tracker.py`](../../src/driveone/data/refav_tracker.py) | Performs coordinate conversion, matching, filtering, timestamp selection, and camera projection for the derived pilot | `numpy`, `pandas`, `scipy`, `av2` |
 | [`scripts/smoke_test_pe.py`](../../scripts/smoke_test_pe.py) | Optional official PE-Core interface check | `torch`, Pillow, official `perception_models` package |
 | [`scripts/run_refav_controls.py`](../../scripts/run_refav_controls.py) | Runs the deterministic RefAV control suite and writes a JSON result | `driveone.data.refav_contract`, `driveone.eval.refav_metrics` |

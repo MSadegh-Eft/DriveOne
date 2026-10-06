@@ -38,8 +38,9 @@ silently discarded from the dataset summary.
 
 ## Current result
 
-Tracker-score ranking reaches about 0.508 mAP on the two-log pilot, including
-about 0.509 mAP on labeled-only candidates. This is a warning that tracker
-confidence and candidate availability are strongly related to the labels. It
-is not a DriveOne result. The next experiment needs score-matched hard
-negatives and more log-disjoint data.
+On the six-log pilot, tracker-score ranking reaches about 0.286 full-pool mAP
+and 0.309 labeled-only mAP. On 2,405 score-matched hard-negative groups, it
+falls to about 0.452 mAP, while projected-box area remains about 0.556 mAP.
+This is a warning that tracker confidence and projected size are related to the
+labels. It is not a DriveOne result. The next experiment needs size-matched
+hard negatives and repeated prompt families.

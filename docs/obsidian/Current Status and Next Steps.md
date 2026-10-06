@@ -3,59 +3,78 @@
 ## What has been completed
 
 - The repository was created as an isolated DriveOne project.
-- The data contract, verifier, PE smoke-test scaffold, configuration, tests, and documentation exist.
-- Official RefAV metadata and a validation annotation artifact were inspected.
-- Official train/validation/test log indices were compared and found disjoint.
-- A small camera/calibration/ego-pose sample was downloaded and projection was demonstrated.
-- The code passes eleven unit tests and compilation checks.
+- The data contract, verifier, tracker adapter, PE smoke test, controls, tests, and documentation exist.
+- Official RefAV metadata, annotations, tracker output, and AV2 sensor assets were inspected.
+- The code passes fifteen tests in the `refav` environment.
+- `PE-Core-L14-336` was tested through the official CLIP image and text path on host GPU 2.
 
-## Why the first data attempt was insufficient
+## Repaired candidate protocol
 
-The annotation-only Feather is not a tracker candidate artifact. It has relevance labels and geometry, but no tracker confidence, camera/image association, or 2-D boxes. It stores quaternion pose rather than the scalar `yaw` field expected by the normalized tracker record. Treating it as a candidate file would make a later ranking result hard to interpret.
+The adapter now keeps every prompt timestamp that is aligned with tracker,
+pose, and the shared camera. It does not inspect relevance labels when choosing
+timestamps. Every candidate in a group uses the same `ring_front_center` image.
+Candidates outside that view remain in the pool with `OUT_OF_VIEW` status.
 
-## Public tracker pilot
-
-The public Valeo4Cast repository was pinned and its validation tracking artifact was extracted outside Git. The adapter in `src/driveone/data/refav_tracker.py` converts city-frame tracks to the ego frame, performs deterministic same-category 2 m matching, applies the AV2 ROI/range filter, and associates retained candidates with a ring-camera image and projected box.
-
-The repaired two-log pilot contains 446,810 candidates in 1,660 prompt/frame groups. It has 165 groups with both a referred object and a labeled negative. It has 165 referred, 161 related, and 14,344 other prompt-specific labels; 432,140 candidates remain explicitly unmatched. The strict verifier passes its configured structural checks, but the two-log scope and sparse labels are still limitations. This is not a model result and is not enough for the final claim.
+The six-log manifest contains 2,143,270 candidates in 9,840 groups. It has
+2,502 groups with both a referred object and a labeled negative. It has 15,804
+referred, 11,040 related, and 300,306 other prompt-specific labels; 1,816,120
+candidates remain unmatched. The strict audit passes. The manifest has six
+logs, but only seven prompts repeat across more than one selected log, so it is
+still a control pilot rather than a strong language-generalization benchmark.
 
 ## PE result
 
-The smoke test passes through the official CLIP path on host GPU 2. `PE-Core-L14-336` exposes 576 patch tokens of width 1024, pooled image features of width 1024, and text features of width 1024. The official text context is 32 tokens. The standalone tokenizer's default of 77 is not the model context used in this run.
+The smoke test passes through the official CLIP path on host GPU 2.
+`PE-Core-L14-336` exposes 576 patch tokens of width 1024, pooled image
+features of width 1024, and text features of width 1024. The official text
+context is 32 tokens. The image input was synthetic, so this proves the
+interface and records timing; it does not prove visual quality.
 
-## Immediate next step
+## Control result and current stop
 
-Run a small control-only ranking experiment using the repaired manifest, not the raw tracker pickle. The manifest is external and identified by its SHA-256 in `configs/refav_pilot.yaml`.
+The six-log deterministic controls show a strong shortcut:
 
-Before calling the result a benchmark, fix or explicitly label the current target-informed timestamp selection: `select_decision_timestamps` chooses a frame because it contains both a referred and a negative match. That is acceptable for a feasibility check, but it is not yet an unbiased final sampling rule.
+- tracker-score ranking: 0.286 full-pool mAP and 0.309 labeled-only mAP;
+- projected-box area: 0.134 full-pool mAP and 0.377 labeled-only mAP;
+- nearest-candidate distance: 0.071 full-pool mAP;
+- random ranking: 0.056 full-pool mAP;
+- oracle ranking: 1.0 mAP.
 
-## Control order
+On 2,405 score-matched hard-negative groups, tracker score falls to 0.452
+mAP, random ranking is 0.467, nearest distance is 0.484, and projected-box
+area is 0.556. On 1,826 groups matched on score and log-area within 0.20,
+tracker score is 0.548, random ranking is 0.530, and projected-box area is
+0.605. The tracker-score advantage is reduced by score matching, but projected
+size remains a shortcut even after the fixed size match.
 
-1. Reproduce the prepared manifest and strict audit.
-2. Fix the timestamp selection protocol, or label the run as feasibility-only.
-3. Implement random, tracker-score, candidate-only, metadata-only, task-ID, and pooled-PE controls.
-4. Report labeled and unmatched candidate strata separately.
-5. Only after these controls are reproducible, add the patch-token scorer.
+This is not DriveOne evidence. Tracker confidence is excluded from learned
+features, and the current result says that candidate availability and visual
+size are correlated with the labels. Stop before training a question-conditioned
+PE scorer. The next task is to select more logs containing repeated prompt
+families and rerun this fixed control protocol. Do not add a learned PE scorer
+until the geometry shortcut is either explained by the candidate construction
+or removed by a defensible matched-negative design.
 
-## First control result
+The six-log manifest hash is
+`865779aa04c48b8a0a889e13598354d6eb183d4c759915e00120fce6f7f8dd45`.
+The control result hash is
+`bae30b14125ffa814624dd4a47c4b5981ed957a7d347aa2752aa75ba3a80cebf`.
 
-The deterministic control run used the repaired manifest and two seeds. On the
-165 groups with at least one labeled positive and one labeled negative,
-tracker-score ranking reached mAP 0.508 and Recall@1 0.248. The same result
-was about 0.509 mAP when unknown candidates were removed from the metric, so
-this shortcut is not caused only by the large unmatched stratum. Random ranking
-was 0.018–0.031 mAP with all candidates; nearest-candidate and projected-box
-area controls were 0.073 and 0.060 mAP.
+## Next task
 
-This is a candidate-generation warning, not DriveOne evidence. The tracker
-confidence field remains excluded from model features. Before a learned PE
-scorer, add more log-disjoint data and evaluate score-matched hard negatives.
-The control JSON is external and identified by SHA-256
-`243e524d28012a5088e177ffe3d02f21cb91847582414d8e44991aab2c7c9b83`.
+1. Select additional logs from the full validation annotation table so each
+   split shares prompt families while remaining log-disjoint.
+2. Download only their front-center camera, pose, calibration, map, and
+   annotation assets.
+3. Re-run the fixed score-and-size-matched controls on those groups.
+4. Only if shortcut controls are no longer sufficient should the pooled-PE,
+   task-ID, and patch-token models be implemented.
 
 ## Stop rules
 
-Stop and redesign if the candidate pool cannot be defined independently of relevance labels, referred tracks cannot be rendered in a camera frame, the tracker artifact cannot be reproduced, or candidate-only metadata explains the result.
+Stop and redesign if candidate construction cannot be independent of relevance
+labels, target coverage is poor, the shared camera removes most targets, or a
+candidate-only shortcut remains competitive after matched hard negatives.
 
 ## Commit history
 
@@ -64,4 +83,6 @@ Stop and redesign if the candidate pool cannot be defined independently of relev
 - `4c4a249` — RefAV feasibility and PE smoke-test workflow.
 - `2531f0d` — public tracker adapter, pilot manifest, and strict audit updates.
 - `db7d19b` — PE smoke findings.
-- The current vault update should be committed separately.
+- `7930e77` — simplified Obsidian roadmap and corrected PE documentation.
+- `cfb2d1e` — label-independent timestamps and shared-camera protocol.
+- `a75b1b8` — leakage-aware deterministic control suite.

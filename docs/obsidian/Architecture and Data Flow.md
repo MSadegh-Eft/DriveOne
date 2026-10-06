@@ -73,4 +73,6 @@ flowchart LR
     G --> H
 ```
 
-The current smoke test is an interface check, not a training run. It loads the PE vision tower and records patch and pooled shapes. It does not run the official CLIP text path, prove that patch tokens are useful, or measure the proposed fusion block.
+The current smoke test is an interface check, not a training run. It records
+patch, pooled-image, and official CLIP text shapes. It does not prove that
+patch tokens are useful or measure the proposed fusion block.

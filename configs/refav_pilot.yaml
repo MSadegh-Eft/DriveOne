@@ -14,7 +14,9 @@ source:
   tracker_artifact: "Valeo4Cast data/track/for_val_and_test/val_tracking.pkl sha256:8cb35baf5c63ff673d9fe00a4b734d23e6b583e2150e51c4ca8d0d9351636b15"
   tracker_artifact_source: "https://drive.google.com/drive/folders/1qzHdi6wIexiyrF03pZHPzz5h1LssqeX4?usp=sharing; data.zip file id 1Fv3EPN_ychJYuHU8pwhqTgKxrTfpbARO"
   pilot_annotation_artifact: "refav_val_two_logs.feather sha256:04b5e5bacf33e4b380cd761411820040257cb7c87b7809694224982d7142580f"
-  pilot_manifest_artifact: "refav_tracker_pilot_repaired.feather sha256:18658d04a723d4ab16799da8cf50ce7de1eabd3b7ff4dadb696cf74a287841ce"
+  pilot_manifest_artifact: "refav_tracker_sixlog_repaired.feather sha256:865779aa04c48b8a0a889e13598354d6eb183d4c759915e00120fce6f7f8dd45"
+  two_log_pipeline_manifest_artifact: "refav_tracker_pilot_repaired.feather sha256:18658d04a723d4ab16799da8cf50ce7de1eabd3b7ff4dadb696cf74a287841ce"
+  control_result_artifact: "refav_controls_sixlog_v3.json sha256:bae30b14125ffa814624dd4a47c4b5981ed957a7d347aa2752aa75ba3a80cebf"
   split_manifest_sha256: "94150fb8c2a8d0dafc914e78f9f06f9b7e5887a3b5beb173bc7aa42d1092dc47"
   license: "RefAV repository MIT; Argoverse 2 data terms apply separately"
 
@@ -43,6 +45,8 @@ candidate_protocol:
   unmatched_status: UNMATCHED_TRACK
   camera_policy: "shared ring_front_center frame per group; nearest image <=100ms"
   timestamp_selection: "annotation prompt timestamps intersected with tracker, pose, and shared-camera timestamps; no relevance-label checks"
+  hard_negative_score_tolerance: 0.05
+  hard_negative_log_area_tolerance: 0.2
 
 split_protocol:
   split_unit: log_id

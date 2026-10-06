@@ -21,9 +21,16 @@ def main() -> int:
     parser.add_argument("--records", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1])
+    parser.add_argument("--hard-negative-delta", type=float, default=0.05)
+    parser.add_argument("--size-matched-log-area-delta", type=float, default=0.2)
     args = parser.parse_args()
 
-    result = run_control_suite(load_records(args.records), seeds=args.seeds)
+    result = run_control_suite(
+        load_records(args.records),
+        seeds=args.seeds,
+        hard_negative_delta=args.hard_negative_delta,
+        size_matched_log_area_delta=args.size_matched_log_area_delta,
+    )
     result["source_records"] = str(args.records.resolve())
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

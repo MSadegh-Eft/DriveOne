@@ -108,12 +108,11 @@ The data gate passes only when the verifier confirms:
 The official PE configuration supports `PE-Core-L14-336`, whose vision tower
 uses 336 px input, patch size 14, and returns 576 patch tokens of width 1024
 after removing the class token (`[1, 576, 1024]` in the pinned checkpoint).
-The pooled output is `[1, 1024]`. The smoke script loads the PE vision tower
-only, so it does not test the official CLIP text path. The official repository
-also exposes a CLIP configuration for this model with text context length 32.
-The script's standalone `SimpleTokenizer` defaults to 77 and is not evidence
-about the CLIP text interface. The fusion design must define and benchmark its
-question encoder explicitly.
+The pooled output is `[1, 1024]`. The smoke script also exercises the official
+CLIP text path, which returns `[1, 1024]` text features with context length 32.
+The script's standalone `SimpleTokenizer` default of 77 is not used for that
+path and is not evidence about the model context. The fusion design must still
+define and benchmark its question encoder explicitly.
 
 ## Executed feasibility audit (2026-10-03)
 
@@ -176,3 +175,18 @@ The pretrained PE CLIP smoke test completed on host GPU 2 with report hash
 `[1, 576, 1024]` patch tokens, `[1, 1024]` pooled image features, and
 `[1, 1024]` text features with official context length 32. Patch, pooled-image,
 and text latency were measured separately; the image input was synthetic.
+
+The six-log repaired manifest was then audited with the same fixed candidate
+protocol. It contains 2,143,270 candidates in 9,840 groups, including 2,502
+groups with both a referred object and a labeled negative. The manifest hash is
+`865779aa04c48b8a0a889e13598354d6eb183d4c759915e00120fce6f7f8dd45`.
+
+The deterministic control output is stored outside Git at
+`refav_controls_sixlog_v3.json` with SHA-256
+`bae30b14125ffa814624dd4a47c4b5981ed957a7d347aa2752aa75ba3a80cebf`. On the
+full pool, tracker-score mAP is 0.286, projected-box-area mAP is 0.134, and
+random mAP is 0.056. On 2,405 score-matched groups, the corresponding values
+are 0.452, 0.556, and 0.467. On 1,826 groups matched on tracker score and
+`log1p(projected pixel area)` within 0.20, the values are 0.548, 0.605, and
+0.530. The projected-size control remains competitive after matching, so the
+learned scorer is intentionally deferred.
