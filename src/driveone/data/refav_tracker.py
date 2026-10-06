@@ -19,8 +19,9 @@ import json
 import math
 import pickle
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import numpy as np
 
@@ -139,9 +140,11 @@ def match_candidates(
     annotations: Any,
     *,
     distance_threshold_m: float = 2.0,
+    linear_sum_assignment: Any | None = None,
 ) -> dict[int, Match]:
     """Match candidates to same-class annotation cuboids one-to-one."""
-    _, _, _, _, _, linear_sum_assignment = _require_runtime_dependencies()
+    if linear_sum_assignment is None:
+        _, _, _, _, _, linear_sum_assignment = _require_runtime_dependencies()
     matches: dict[int, Match] = {}
     for category in np.unique(candidate_names):
         candidate_indices = np.flatnonzero(candidate_names == category)
@@ -271,6 +274,12 @@ def roi_mask_for_frame(frame: Mapping[str, Any], roi_map: Any) -> np.ndarray:
     return np.asarray(points_mask.reshape(-1, 8).any(axis=1), dtype=bool)
 
 
+@lru_cache(maxsize=4096)
+def _resolved_image_path(image_path: Path) -> str:
+    """Resolve an unchanged image path once rather than once per candidate."""
+    return str(image_path.resolve())
+
+
 def project_candidate(
     center_ego: np.ndarray,
     size_lwh: np.ndarray,
@@ -296,7 +305,7 @@ def project_candidate(
     valid_depth = np.isfinite(uv).all(axis=1) & (points_cam[:, 2] > 0.1)
     common = {
         "camera_name": camera_name,
-        "image_path": str(image_path.resolve()),
+        "image_path": _resolved_image_path(image_path),
         "image_timestamp_ns": int(image_timestamp),
         "timestamp_delta_ns": abs(int(image_timestamp) - int(timestamp_ns)),
     }
@@ -365,9 +374,10 @@ def prepare_records(
     log_ids: Iterable[str],
     distance_threshold_m: float = 2.0,
     camera_tolerance_ns: int = 100_000_000,
+    progress: Callable[[str], None] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Create one candidate group for every aligned prompt/timestamp pair."""
-    pd, _, _, quat_to_mat, SE3, _ = _require_runtime_dependencies()
+    pd, _, _, quat_to_mat, SE3, linear_sum_assignment = _require_runtime_dependencies()
     annotations = pd.read_feather(annotation_path)
     wanted_logs = list(log_ids)
     annotations = annotations[annotations["log_id"].isin(wanted_logs)].copy()
@@ -382,6 +392,8 @@ def prepare_records(
         "unusable_prompts": [],
     }
     for log_id in wanted_logs:
+        if progress:
+            progress(f"Loading log {log_id}")
         if log_id not in trackers or log_id not in sensor_roots:
             raise TrackerPreparationError(f"Missing tracker or sensor root for {log_id}")
         sensor_root = Path(sensor_roots[log_id])
@@ -390,6 +402,10 @@ def prepare_records(
         camera_files = build_camera_file_index(sensor_root)
         roi_map = build_roi_map(sensor_root)
         log_annotations = annotations[annotations["log_id"] == log_id]
+        annotation_groups = {
+            (str(prompt), int(timestamp)): group
+            for (prompt, timestamp), group in log_annotations.groupby(["prompt", "timestamp_ns"], sort=False)
+        }
         selected = select_decision_timestamps(
             trackers[log_id],
             log_annotations,
@@ -409,39 +425,54 @@ def prepare_records(
             if prompt not in selected
         )
         frames_by_timestamp = {int(frame["timestamp_ns"]): frame for frame in trackers[log_id]}
+        # Geometry and projection depend on the frame, not on the prompt.
+        # Cache them within this log without changing row order or labels.
+        geometry_cache: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, float]] = {}
+        projection_cache: dict[tuple[int, int], CameraProjection] = {}
+        completed_groups = 0
         for prompt, timestamps in selected.items():
           for timestamp in timestamps:
             frame = frames_by_timestamp[timestamp]
-            pose_row = pose_table.loc[timestamp]
-            pose = _pose_se3(pose_row, SE3, quat_to_mat)
-            ego_yaw = _ego_yaw(pose_row, quat_to_mat)
-            city_positions = np.asarray(frame["translation_m"], dtype=float)
-            ego_positions = global_to_ego(city_positions, pose_row, SE3, quat_to_mat)
-            roi_mask = roi_mask_for_frame(frame, roi_map)
-            prompt_annotations = log_annotations[(log_annotations["prompt"] == prompt) & (log_annotations["timestamp_ns"] == timestamp)]
-            matches = match_candidates(ego_positions[:, :2], np.asarray(frame["name"]), prompt_annotations, distance_threshold_m=distance_threshold_m)
+            if timestamp not in geometry_cache:
+                pose_row = pose_table.loc[timestamp]
+                city_positions = np.asarray(frame["translation_m"], dtype=float)
+                ego_positions = global_to_ego(city_positions, pose_row, SE3, quat_to_mat)
+                roi_mask = roi_mask_for_frame(frame, roi_map)
+                geometry_cache[timestamp] = (city_positions, ego_positions, roi_mask, _ego_yaw(pose_row, quat_to_mat))
+            city_positions, ego_positions, roi_mask, ego_yaw = geometry_cache[timestamp]
+            prompt_annotations = annotation_groups[(prompt, timestamp)]
+            matches = match_candidates(
+                ego_positions[:, :2],
+                np.asarray(frame["name"]),
+                prompt_annotations,
+                distance_threshold_m=distance_threshold_m,
+                linear_sum_assignment=linear_sum_assignment,
+            )
             annotations_by_uuid = {str(row.track_uuid): row for row in prompt_annotations.itertuples(index=False)}
             for index in range(len(frame["track_id"])):
+                distance_m = float(np.linalg.norm(ego_positions[index, :2]))
+                is_in_roi = bool(roi_mask[index])
+                if distance_m >= 50.0 or not is_in_roi:
+                    continue
                 match = matches.get(index)
                 annotation = annotations_by_uuid.get(match.gt_track_uuid) if match else None
                 label_name = str(annotation.mining_category) if annotation is not None else None
                 label = LABEL_TO_ID.get(label_name) if label_name else None
                 status = "MATCHED_ANNOTATED" if annotation is not None else "UNMATCHED_TRACK" if match is None else "MATCHED_UNANNOTATED_GT"
-                projection = project_candidate(
-                    ego_positions[index],
-                    np.asarray(frame["size"])[index],
-                    float(frame["yaw"][index]) - ego_yaw,
-                    timestamp,
-                    sensor_root,
-                    camera_models,
-                    camera_files,
-                    camera_name=DEFAULT_CAMERA,
-                    camera_tolerance_ns=camera_tolerance_ns,
-                )
-                distance_m = float(np.linalg.norm(ego_positions[index, :2]))
-                is_in_roi = bool(roi_mask[index])
-                if distance_m >= 50.0 or not is_in_roi:
-                    continue
+                projection_key = (timestamp, index)
+                if projection_key not in projection_cache:
+                    projection_cache[projection_key] = project_candidate(
+                        ego_positions[index],
+                        np.asarray(frame["size"])[index],
+                        float(frame["yaw"][index]) - ego_yaw,
+                        timestamp,
+                        sensor_root,
+                        camera_models,
+                        camera_files,
+                        camera_name=DEFAULT_CAMERA,
+                        camera_tolerance_ns=camera_tolerance_ns,
+                    )
+                projection = projection_cache[projection_key]
                 records.append({
                     "log_id": log_id,
                     "prompt": prompt,
@@ -471,6 +502,11 @@ def prepare_records(
                     "projected_box": list(projection.projected_box) if projection.projected_box else None,
                     "projection_status": projection.status,
                 })
+            completed_groups += 1
+            if progress and completed_groups % 100 == 0:
+                progress(f"{log_id}: {completed_groups} groups completed; {len(records)} candidate rows so far")
+        if progress:
+            progress(f"Finished {log_id}: {completed_groups} groups")
     return records, summary
 
 

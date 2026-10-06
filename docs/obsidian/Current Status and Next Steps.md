@@ -67,13 +67,36 @@ prompt text only; it does not claim paraphrase or template-family equivalence.
 Its SHA-256 is
 `cba73f6f34a5373bf3a5f69765b78f5eeebf48ad2ebdab38032a204cd7c60f85`.
 
+## Repeated-prompt nine-log result
+
+The nine-log manifest passed the strict audit. It contains 3,338,670 candidates
+in 14,120 groups, with 3,242 rankable groups. Every row has a shared camera
+image; 856,830 rows have a projected box and 2,987,540 are unmatched tracker
+rows. The manifest SHA-256 is
+`af5142e17c955333ea4429e55eee23269c4d14e843bed29e57b2f714830f0dbb` and the
+audit SHA-256 is
+`f8011df7017b75372c2b0cbf08a9763f7e7f46c68dedbe63a70cfcde19aad851`.
+
+On the full nine-log pool, random, tracker-score, and projected-area controls
+reach 0.030, 0.281, and 0.129 mAP. On 2,029 groups matched on tracker score
+and log-area, they reach 0.495, 0.515, and 0.511 mAP. The score-and-size
+matched control result SHA-256 is
+`3d865f67f1b9ecb56c35376f3e975f39ce371dfabc762ce99cd6d8eb518aff5c`.
+
+The split controls are not uniform: size-matched tracker/area mAP is
+0.335/0.376 on train, 0.795/0.642 on validation, and 0.548/0.607 on test.
+These per-split numbers must remain visible; pooling them would hide a major
+log-dependent shortcut. The split-control SHA-256 is
+`780816682c52483ce8f262d7e3bab088c133619b36b2ae15ada6ff5263c86844`.
+
 ## Next task
 
-1. Download only the nine planned logs' front-center camera, pose, calibration, map, and
-   annotation assets.
-2. Re-run the fixed score-and-size-matched controls on those groups.
-3. Only if shortcut controls are no longer sufficient should the pooled-PE,
-   task-ID, and patch-token models be implemented.
+1. Implement the frozen-PE pooled and learned task-ID controls on the same
+   manifests and split files.
+2. Measure them first on a small one-seed subset, including end-to-end image
+   loading and PE latency.
+3. Add the patch-token scorer only after the pooled/task-ID controls are
+   reproducible and the split-level shortcuts are reported.
 
 ## Stop rules
 

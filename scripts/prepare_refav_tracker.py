@@ -35,6 +35,7 @@ def main() -> int:
         log_ids=args.logs,
         distance_threshold_m=args.distance_threshold_m,
         camera_tolerance_ns=int(args.camera_tolerance_ms * 1_000_000),
+        progress=lambda message: print(message, file=sys.stderr, flush=True),
     )
     summary = dict(summary)
     summary.update({

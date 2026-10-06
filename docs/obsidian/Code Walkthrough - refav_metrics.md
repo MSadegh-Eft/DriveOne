@@ -38,9 +38,10 @@ silently discarded from the dataset summary.
 
 ## Current result
 
-On the six-log pilot, tracker-score ranking reaches about 0.286 full-pool mAP
-and 0.309 labeled-only mAP. On 2,405 score-matched hard-negative groups, it
-falls to about 0.452 mAP, while projected-box area remains about 0.556 mAP.
-This is a warning that tracker confidence and projected size are related to the
-labels. It is not a DriveOne result. The next experiment needs size-matched
-hard negatives and repeated prompt families.
+On the nine-log pilot, tracker-score ranking reaches about 0.281 full-pool mAP
+and projected-box area about 0.129 mAP, versus about 0.030 for random ranking.
+On 2,029 groups matched on score and `log1p(projected pixel area)` within 0.20,
+tracker score is about 0.515, projected-box area about 0.511, and random about
+0.495. These are shortcut diagnostics, not DriveOne results. The split-level
+values vary widely, so the next experiment must use the fixed train/validation/
+test plan and report each split separately.

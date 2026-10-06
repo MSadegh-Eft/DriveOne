@@ -69,6 +69,7 @@ random ranking. On 2,405 score-matched groups, tracker score fell to about
 0.452 while projected box area remained about 0.556. With a fixed 0.20
 log-area tolerance in addition to the score match, projected box area remained
 about 0.605 mAP versus about 0.530 for random ranking across 1,826 groups.
-These are shortcut diagnostics, not DriveOne evidence. The next data step is
-to build a log-disjoint repeated-prompt split and repeat this audit before any
-learned scorer.
+These are shortcut diagnostics, not DriveOne evidence. The nine-log,
+log-disjoint repeated-prompt plan has now been built and audited. The next
+step is to run frozen-PE pooled and learned task-ID controls on those exact
+splits before adding patch-token fusion.

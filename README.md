@@ -24,10 +24,10 @@ conda run -n refav python scripts/run_refav_controls.py \
   --size-matched-log-area-delta 0.2
 ```
 
-It found strong tracker-confidence and projected-size shortcuts. The
-score-matched tracker advantage disappears, but projected box area remains
-strong after score-and-size matching. The next data step is a repeated-prompt
-log split and a fixed shortcut audit before training a PE scorer.
+It found strong tracker-confidence and projected-size shortcuts. The repeated-
+prompt nine-log split is now built and audited; shortcut strength varies by
+split, so results must remain stratified. The next step is the frozen-PE pooled
+and task-ID controls before adding patch-token fusion.
 
 Prepare the pinned public Valeo4Cast validation tracks into the derived pilot
 manifest, then run the dependency-light RefAV feasibility verifier:
