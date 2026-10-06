@@ -22,6 +22,13 @@ source:
   repeated_prompt_audit_artifact: "refav_tracker_repeated_prompt9_audit.json sha256:f8011df7017b75372c2b0cbf08a9763f7e7f46c68dedbe63a70cfcde19aad851"
   repeated_prompt_control_artifact: "refav_controls_repeated_prompt9.json sha256:3d865f67f1b9ecb56c35376f3e975f39ce371dfabc762ce99cd6d8eb518aff5c"
   repeated_prompt_split_control_artifact: "refav_controls_repeated_prompt9_splits.json sha256:780816682c52483ce8f262d7e3bab088c133619b36b2ae15ada6ff5263c86844"
+  baseline_subset_manifest_artifact: "refav_subset_manifest.json sha256:fc2c956e17792fbe605c25e5ea43efa774af21a4358fe17777cb27dba0b68e88"
+  baseline_pooled_feature_artifact: "pe_core_pooled_features.pt sha256:dccf812f7b9f7d3174db09bc6f530a196c4033afe370ea49d4a592b019af9d11"
+  baseline_feature_report_artifact: "pe_core_pooled_features.json sha256:6ca6b41ec980c59b32716e3dea6e62c5eac49037ac023f1a25df4336aadaba76"
+  baseline_result_artifact: "baseline_results_seed0.json sha256:240874882fd2e3b9808786b17ea2dbb4e0f0be7a4e010f1f38430b9b3456c77d"
+  baseline_control_train_artifact: "controls_train.json sha256:aefa14cad4714e61ae8759b882a320520f4f5817b471f4e344ac87139ed2615e"
+  baseline_control_validation_artifact: "controls_validation.json sha256:c7631e859d70b33b32cf6f87c56a8df44bf81ee1468ed1ba0c739d44c2d5020c"
+  baseline_control_test_artifact: "controls_test.json sha256:503f2edf66070a425fa39463ff2c19322dcc33d76c87aa1c61528f915b525fdc"
   split_manifest_sha256: "94150fb8c2a8d0dafc914e78f9f06f9b7e5887a3b5beb173bc7aa42d1092dc47"
   license: "RefAV repository MIT; Argoverse 2 data terms apply separately"
 
@@ -77,7 +84,7 @@ verification:
 pe_smoke:
   config: PE-Core-L14-336
   official_repository_commit: "3e352cca660658d4b5c90f42a7808b11469e4c66"
-  report_artifact: "pe_core_l14_336_clip_gpu2.json sha256:362fa0ccb0c9d6bf30f75d5dc58eb872561b0e9803cc11fca5cfed6c2fc58472"
+  report_artifact: "pe_core_l14_336_real_gpu2.json sha256:6864b983422203d506806dcbd652ce8f9f312a6c13ec3cad21c048a1cee0a485"
   device: "cuda_visible_device_2"
   patch_shape: [1, 576, 1024]
   pooled_shape: [1, 1024]
@@ -85,3 +92,12 @@ pe_smoke:
   official_clip_text_context_length: 32
   text_feature_shape: [1, 1024]
   standalone_tokenizer_context_length: 77
+
+baseline_smoke:
+  subset_groups_per_split: 200
+  seed: 0
+  models: [candidate_only, metadata_only, task_id, pooled_pe]
+  pooled_pe_features: frozen_image_and_text
+  training_loss: "BCE on labeled candidates; unknown candidates retained for ranking evaluation"
+  proceed_to_patch_tokens: false
+  reason: "One-seed smoke test does not beat deterministic tracker/geometry controls on the held-out test subset."
