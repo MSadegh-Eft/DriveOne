@@ -33,6 +33,14 @@ def _box_area(value: Any) -> float:
     return max(0.0, x1 - x0) * max(0.0, y1 - y0)
 
 
+def _tracker_score(row: Mapping[str, Any]) -> float:
+    """Read the historical ``score`` alias or the repaired field."""
+    try:
+        return float(row.get("score", row.get("tracker_score")))
+    except (TypeError, ValueError):
+        return float("-inf")
+
+
 def _stable_random_order(size: int, seed: int, group_index: int) -> np.ndarray:
     return np.random.default_rng(seed + 1009 * group_index).permutation(size)
 
@@ -83,10 +91,7 @@ def _rank_order(name: str, rows: list[Mapping[str, Any]], seed: int, group_index
         if name == "oracle":
             return (0.0 if _label(row.get("label")) == POSITIVE else 1.0, tie_rank[index])
         if name == "tracker_score":
-            try:
-                value = float(row.get("score"))
-            except (TypeError, ValueError):
-                value = float("-inf")
+            value = _tracker_score(row)
             return (-value, tie_rank[index])
         if name == "candidate_distance":
             try:
@@ -144,10 +149,10 @@ def _hard_negative_rows(
     for row in rows:
         if _label(row.get("label")) != POSITIVE:
             continue
-        try:
-            positive_scores.append(float(row.get("score")))
-        except (TypeError, ValueError):
+        score = _tracker_score(row)
+        if not np.isfinite(score):
             continue
+        positive_scores.append(score)
         positive_log_areas.append(float(np.log1p(_projected_box_area(row))))
     if not positive_scores:
         return []
@@ -159,9 +164,8 @@ def _hard_negative_rows(
             continue
         if label not in NEGATIVES:
             continue
-        try:
-            score = float(row.get("score"))
-        except (TypeError, ValueError):
+        score = _tracker_score(row)
+        if not np.isfinite(score):
             continue
         score_match = min(abs(score - positive_score) for positive_score in positive_scores) <= score_delta
         if not score_match:
