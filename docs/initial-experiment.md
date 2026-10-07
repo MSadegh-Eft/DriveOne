@@ -71,17 +71,17 @@ log-area tolerance in addition to the score match, projected box area remained
 about 0.605 mAP versus about 0.530 for random ranking across 1,826 groups.
 These are shortcut diagnostics, not DriveOne evidence.
 
-The nine-log, log-disjoint repeated-prompt plan was then used for a 200-group
-per-split frozen-PE smoke test. Pooled PE reached 0.0967 test mAP, while
-learned task ID reached 0.0855. The same test groups give 0.1674 mAP for
-tracker-score ranking and 0.1678 for projected box area. Pooled PE therefore
-does not yet beat the strongest simple controls, and its test ECE (0.1522) is
-worse than metadata-only (0.0538). Do not add patch-token fusion based on this
-run. First replicate the one-seed result on a larger fixed subset, inspect
-per-log and candidate-count strata, and verify metric and candidate-row parity.
-The full record is in `docs/refav_baseline_smoke.md`.
+The nine-log, log-disjoint repeated-prompt plan was then used for a corrected
+200-group-per-split frozen-PE smoke test. Pooled PE reached 0.0319 test mAP,
+while task ID with the same pooled image input reached 0.0581. The same test
+groups give 0.1674 mAP for tracker-score ranking and 0.1678 for projected box
+area. Pooled PE therefore does not beat the strongest simple controls, and its
+test ECE (0.1322) is worse than metadata-only (0.0559). A 500-group-per-split
+correction confirmed the stop: pooled PE reached 0.0476 test mAP and task ID
+0.0576, compared with 0.1813 for tracker-score ranking and 0.1729 for
+projected-box-area ranking. The first version had incorrect box normalization
+and an unmatched task-ID input; its results are invalid. The full corrected
+record is in `docs/refav_baseline_smoke.md`.
 
-A 500-group-per-split one-seed replication confirmed the stop: pooled PE
-reached 0.0511 test mAP, compared with 0.1813 for tracker-score ranking and
-0.1729 for projected-box-area ranking on the same candidates. The next action
-is candidate and label-protocol diagnosis; adding patch tokens is deferred.
+Do not add patch-token fusion based on this gate. The next action is candidate
+and label-protocol diagnosis.

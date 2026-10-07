@@ -91,11 +91,12 @@ log-dependent shortcut. The split-control SHA-256 is
 
 ## Next task
 
-The first frozen-PE baseline smoke test is now complete. It used 200 rankable
+The corrected frozen-PE baseline smoke test is complete. It used 200 rankable
 groups per split from the nine-log plan and one random seed. Pooled PE scored
-0.0967 test mAP; task ID scored 0.0855. On the exact same groups, deterministic
-tracker-score and projected-box-area ranking scored 0.1674 and 0.1678 mAP.
-Pooled PE also had test ECE 0.1522, compared with 0.0538 for metadata-only.
+0.0319 test mAP; task ID with the same pooled image scored 0.0581. On the exact
+same groups, deterministic tracker-score and projected-box-area ranking scored
+0.1674 and 0.1678 mAP. Pooled PE also had test ECE 0.1322, compared with
+0.0559 for metadata-only.
 
 This is an early stop signal. It is not a final rejection because the run is
 small and uses one seed. It does mean that adding patch tokens now would hide
@@ -104,10 +105,17 @@ and `docs/refav_baseline_smoke.md` before running more model code.
 
 The next experiment is a baseline replication/debugging gate:
 
-The 500-group-per-split replication is now complete. Pooled PE scored 0.0511
-test mAP; tracker-score and projected-box-area controls scored 0.1813 and
-0.1729 on the same candidates. This confirms the early stop at a larger
-subset. Do not add patch tokens or a second seed yet.
+The corrected 500-group-per-split replication is now complete. Pooled PE scored
+0.0476 test mAP and task ID with the same pooled image scored 0.0576;
+tracker-score and projected-box-area controls scored 0.1813 and 0.1729 on the
+same candidates. This confirms the early stop at a larger subset. Do not add
+patch tokens or a second seed yet.
+
+The corrected result hashes are `7bd361d9988cc1fd3db90299d4e5c6b346174265bfcce6f4b25e161ac272f164`
+(200 groups per split) and
+`3d9f83776f3ed7713b00a474a940e149319c1b0086addf13bf770c659e3605b8`
+(500 groups per split). The earlier v1 hashes remain listed in the config only
+to show which artifacts were superseded.
 
 The next action is protocol diagnosis:
 

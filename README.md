@@ -33,10 +33,11 @@ not yet beat the strongest deterministic controls, so patch-token modeling is
 paused while the baseline and shortcut protocol are replicated on a larger
 fixed subset.
 
-The 500-group-per-split replication confirms the stop: pooled PE reaches 0.0511
-test mAP, while tracker-score and projected-box-area controls reach 0.1813 and
-0.1729 on the same candidates. The next work is protocol diagnosis and
-candidate redesign, not a larger model.
+The corrected 500-group-per-split replication confirms the stop: pooled PE
+reaches 0.0476 test mAP and task ID with the same pooled image reaches 0.0576,
+while tracker-score and projected-box-area controls reach 0.1813 and 0.1729 on
+the same candidates. The next work is protocol diagnosis and candidate
+redesign, not a larger model.
 
 Prepare the pinned public Valeo4Cast validation tracks into the derived pilot
 manifest, then run the dependency-light RefAV feasibility verifier:

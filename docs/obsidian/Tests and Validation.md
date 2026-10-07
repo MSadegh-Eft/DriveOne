@@ -55,7 +55,11 @@ There are currently no tests for:
 - AP or calibration calculations;
 - PE tensor shapes;
 - GPU latency;
-- training or model quality;
+- PE model quality or patch-token ranking;
 - end-to-end candidate crop construction.
 
-Those tests should be added only after the missing tracker/camera candidate artifact exists. Tests that merely mirror a future implementation would not resolve the current feasibility blocker.
+The baseline helper tests now cover feature shape, source-size normalization,
+and the rule that unknown candidates remain ranking distractors. The actual
+baseline results are external artifacts and are not treated as unit-test
+evidence. Tests that merely mirror a future implementation would not resolve
+the current feasibility blocker.

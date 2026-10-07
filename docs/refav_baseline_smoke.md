@@ -4,6 +4,13 @@ This note records the first learned-baseline check for the custom **RefAV
 referred-track ranking** task. It is a small diagnostic, not a DriveOne result
 and not evidence about driving safety, planning, or grounding.
 
+The first implementation of this smoke test was found to have two comparison
+bugs after it ran: projected boxes were normalized with the wrong source image
+size, and the task-ID model did not receive the pooled image input used by the
+pooled-PE model. Those version-1 numbers remain in old commits only for audit;
+they are **invalid and must not be used as evidence**. The results below are
+version 2, after both fixes.
+
 ## What was run
 
 - Nine-log, log-disjoint repeated-prompt plan.
@@ -15,6 +22,12 @@ and not evidence about driving safety, planning, or grounding.
   GPU 2. The model was not fine-tuned.
 - Four controls were trained with one seed (`0`): candidate-only,
   metadata-only, learned task ID, and pooled PE.
+- Task ID and pooled PE both receive the same pooled image vector. Task ID uses
+  a learned prompt ID; pooled PE uses the PE text vector. This isolates the
+  question representation more fairly.
+- Source `ring_front_center` images are 1550×2048 pixels. Box coordinates are
+  normalized using those dimensions, checked from the image files and camera
+  calibration.
 - The loss was binary cross-entropy on labeled candidates. Unknown candidates
   were omitted from the loss but retained when ranking the full candidate pool.
 - Metrics were computed per group: multi-positive mAP, Recall@1, NLL, Brier,
@@ -35,16 +48,15 @@ image and text vectors only; it did not train a patch-token fusion block.
 
 | model | train mAP | validation mAP | test mAP | test Recall@1 | test NLL | test Brier | test ECE |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| candidate-only | 0.0849 | 0.0479 | 0.0391 | 0.000 | 0.3450 | 0.0845 | 0.0817 |
-| metadata-only | 0.0511 | 0.0803 | 0.0491 | 0.000 | 0.3276 | 0.0808 | 0.0538 |
-| task ID | 0.1633 | 0.0600 | 0.0855 | 0.025 | 0.4078 | 0.0987 | 0.1156 |
-| pooled PE | 0.1841 | 0.0873 | 0.0967 | 0.035 | 0.4334 | 0.1111 | 0.1522 |
+| candidate-only | 0.1092 | 0.0539 | 0.0455 | 0.000 | 0.3577 | 0.0848 | 0.0738 |
+| metadata-only | 0.0592 | 0.0853 | 0.0551 | 0.000 | 0.3221 | 0.0806 | 0.0559 |
+| task ID + pooled image | 0.2649 | 0.0647 | 0.0581 | 0.020 | 0.4640 | 0.1061 | 0.1308 |
+| pooled PE image + text | 0.1276 | 0.0487 | 0.0319 | 0.000 | 0.4150 | 0.1058 | 0.1322 |
 
 The deterministic controls on the same exact test groups reach mAP 0.1674 for
-tracker score and 0.1678 for projected box area. Therefore pooled PE is ahead
-of the learned task-ID and simple learned controls in this smoke test, but it
-does not beat the strongest deterministic controls. Its test calibration is
-also worse: ECE is 0.1522 versus 0.0538 for the metadata-only model.
+tracker score and 0.1678 for projected box area. Corrected pooled PE is below
+both controls and below task ID. Its test calibration is also worse than
+metadata-only: ECE is 0.1322 versus 0.0559.
 
 ## Larger one-seed replication
 
@@ -55,15 +67,18 @@ results are:
 | model/control | test mAP | test Recall@1 |
 | --- | ---: | ---: |
 | random ranking | 0.0395 | 0.012 |
-| candidate-only | 0.0782 | 0.038 |
-| metadata-only | 0.0379 | 0.000 |
-| learned task ID | 0.0437 | 0.006 |
-| pooled PE | 0.0511 | 0.012 |
+| candidate-only | 0.0734 | 0.030 |
+| metadata-only | 0.0527 | 0.000 |
+| learned task ID + pooled image | 0.0576 | 0.036 |
+| pooled PE image + text | 0.0476 | 0.016 |
 | tracker-score ranking | 0.1813 | 0.046 |
 | projected-box-area ranking | 0.1729 | 0.158 |
 
-The pooled-PE result is lower than both deterministic controls, and the
-candidate-only model is also far below them. This makes the first negative
+| tracker-score ranking | 0.1813 | 0.046 |
+| projected-box-area ranking | 0.1729 | 0.158 |
+
+The corrected pooled-PE result is lower than both deterministic controls, and
+the task-ID comparison does not show a language gain. This makes the negative
 signal reproducible at a larger subset. It still does not prove that visual
 features can never help; it shows that this candidate protocol and current
 pooled baseline do not support the proposed gain.
@@ -77,9 +92,10 @@ gate: pooled PE does not beat the strongest matched deterministic controls.
 The next work should be protocol and candidate redesign, not more model
 capacity.
 
-The next allowed experiment is a baseline replication/debugging gate:
+The next allowed experiment is a protocol-diagnosis gate:
 
-1. Audit per-log and candidate-count strata for the 500-group result.
+1. Audit the recorded per-log and candidate-count strata for the 500-group
+   result.
 2. Inspect whether the label transfer and candidate generator make visual
    appearance redundant or whether tracker geometry is acting as a target
    proxy.
@@ -113,14 +129,15 @@ python scripts/train_refav_baselines.py \
   --validation "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/refav_validation_subset.jsonl" \
   --test "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/refav_test_subset.jsonl" \
   --features "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/pe_core_pooled_features.pt" \
-  --output "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/baseline_results_seed0.json" \
-  --device cuda --epochs 12 --seed 0
+  --output "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/baseline_results_seed0_v2.json" \
+  --device cpu --epochs 12 --seed 0 --threads 2 \
+  --image-width 1550 --image-height 2048
 
 conda run -n refav python scripts/run_refav_controls.py \
-  --records "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_500/refav_test_subset.feather" \
-  --output "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_500/controls_test.json" \
+  --records "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/refav_test_subset.feather" \
+  --output "$DRIVEONE_ASSET_ROOT/refav/refav_baseline_subset_200/controls_test.json" \
   --seeds 0 1 --hard-negative-delta 0.05 --size-matched-log-area-delta 0.2
 ```
 
-For the 200-group smoke result, replace `refav_baseline_subset_500` with
-`refav_baseline_subset_200` and use `--groups-per-split 200` when exporting.
+For the 500-group replication, replace `refav_baseline_subset_200` with
+`refav_baseline_subset_500` and use `--groups-per-split 500` when exporting.

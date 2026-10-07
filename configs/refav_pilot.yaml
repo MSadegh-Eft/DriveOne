@@ -25,14 +25,16 @@ source:
   baseline_subset_manifest_artifact: "refav_subset_manifest.json sha256:fc2c956e17792fbe605c25e5ea43efa774af21a4358fe17777cb27dba0b68e88"
   baseline_pooled_feature_artifact: "pe_core_pooled_features.pt sha256:dccf812f7b9f7d3174db09bc6f530a196c4033afe370ea49d4a592b019af9d11"
   baseline_feature_report_artifact: "pe_core_pooled_features.json sha256:6ca6b41ec980c59b32716e3dea6e62c5eac49037ac023f1a25df4336aadaba76"
-  baseline_result_artifact: "baseline_results_seed0.json sha256:240874882fd2e3b9808786b17ea2dbb4e0f0be7a4e010f1f38430b9b3456c77d"
+  baseline_result_artifact: "baseline_results_seed0_v2.json sha256:7bd361d9988cc1fd3db90299d4e5c6b346174265bfcce6f4b25e161ac272f164"
+  baseline_result_v1_invalid_artifact: "baseline_results_seed0.json sha256:240874882fd2e3b9808786b17ea2dbb4e0f0be7a4e010f1f38430b9b3456c77d"
   baseline_control_train_artifact: "controls_train.json sha256:aefa14cad4714e61ae8759b882a320520f4f5817b471f4e344ac87139ed2615e"
   baseline_control_validation_artifact: "controls_validation.json sha256:c7631e859d70b33b32cf6f87c56a8df44bf81ee1468ed1ba0c739d44c2d5020c"
   baseline_control_test_artifact: "controls_test.json sha256:503f2edf66070a425fa39463ff2c19322dcc33d76c87aa1c61528f915b525fdc"
   baseline_replication_subset_manifest_artifact: "refav_subset_manifest.json sha256:0d13f1ffacb06a2bc721e73045078a22eac5cbadcd7e445aa5a7bbe9bb458a3a"
   baseline_replication_feature_artifact: "pe_core_pooled_features.pt sha256:f52951b1ee355c22b8bebc11156fbdf4bebab583e137bd22d054f7df8b149141"
   baseline_replication_feature_report_artifact: "pe_core_pooled_features.json sha256:3c0abb03137d5f2ffa1b0a3a9e8d8cefa6f8e4d09ca24d71ebd695a4d4f42174"
-  baseline_replication_result_artifact: "baseline_results_seed0.json sha256:31b51bca0aeeea3052389e9569e267838c3fe57385f552cc12620e0bb1a6da1d"
+  baseline_replication_result_artifact: "baseline_results_seed0_v2.json sha256:3d9f83776f3ed7713b00a474a940e149319c1b0086addf13bf770c659e3605b8"
+  baseline_replication_result_v1_invalid_artifact: "baseline_results_seed0.json sha256:31b51bca0aeeea3052389e9569e267838c3fe57385f552cc12620e0bb1a6da1d"
   baseline_replication_control_train_artifact: "controls_train.json sha256:9a7a6c7ebf956825607bf0879593c3e35f67b2b210f04e1d4b41314a68556bec"
   baseline_replication_control_validation_artifact: "controls_validation.json sha256:dc226b0b558dae3788f864c9c41210150a309b53b5a1eb3216e7ca732edab74f"
   baseline_replication_control_test_artifact: "controls_test.json sha256:a39b28f38bd488f6e92c30cb9285f0df4fc368af76a54e838908642644d88b63"
@@ -105,12 +107,18 @@ baseline_smoke:
   seed: 0
   models: [candidate_only, metadata_only, task_id, pooled_pe]
   pooled_pe_features: frozen_image_and_text
+  source_camera: ring_front_center
+  source_image_size: [1550, 2048]
+  feature_dtype: float32
+  scorer_dtype: float32
+  task_id_conditioning: "pooled PE image plus learned prompt ID"
+  pooled_pe_conditioning: "pooled PE image plus PE text"
   training_loss: "BCE on labeled candidates; unknown candidates retained for ranking evaluation"
   proceed_to_patch_tokens: false
-  reason: "One-seed smoke test does not beat deterministic tracker/geometry controls on the held-out test subset."
+  reason: "Corrected one-seed smoke test does not beat deterministic tracker/geometry controls on the held-out test subset."
 
 baseline_replication:
   subset_groups_per_split: 500
   seed: 0
   proceed_to_patch_tokens: false
-  reason: "The larger one-seed replication confirms the pooled-PE result remains below deterministic tracker/geometry controls."
+  reason: "Corrected larger one-seed replication confirms the pooled-PE result remains below deterministic tracker/geometry controls."

@@ -59,13 +59,17 @@ before they enter the learned model.
 - `candidate_only`: candidate geometry and category, no question or image.
 - `metadata_only`: tracker metadata and category. This is an explicit shortcut
   control, not a permitted DriveOne input.
-- `task_id`: candidate geometry plus a learned embedding for the prompt ID.
-  This tests a learned task/query identity without reading the prompt words.
+- `task_id`: candidate geometry, the pooled PE image vector, and a learned
+  embedding for the prompt ID. This tests task/query identity against the same
+  visual input used by pooled PE, without reading the prompt words.
 - `pooled_pe`: candidate geometry plus pooled PE image and text features. This
   is the first question-conditioned image baseline, but it still has no patch
   tokens.
 
 All four use the same small MLP-style scorer and the same candidate groups.
+The task-ID and pooled-PE context widths are matched; their parameter counts
+can still differ because a prompt embedding and a text projection have
+different vocabulary sizes.
 The only intended change is the context input. Unknown labels are omitted from
 the binary cross-entropy training loss, but they remain in the ranking pool.
 
@@ -86,12 +90,14 @@ candidate-ranking definition.
 
 ## 4. What the result means
 
-On the 200-group-per-split smoke subset, pooled PE scored 0.0967 test mAP. The
-same test groups scored 0.1674 with tracker-score ranking and 0.1678 with
-projected-box-area ranking. The 500-group-per-split replication then scored
-0.0511 for pooled PE, versus 0.1813 and 0.1729 for the two deterministic
-controls. Therefore pooled PE has not passed the next gate. The next step is
-protocol diagnosis and candidate redesign, not a patch-token model.
+On the corrected 200-group-per-split smoke subset, pooled PE scored 0.0319 test
+mAP and task ID with the same pooled image scored 0.0581. The same test groups
+scored 0.1674 with tracker-score ranking and 0.1678 with projected-box-area
+ranking. The corrected 500-group-per-split replication then scored 0.0476 for
+pooled PE and 0.0576 for task ID, versus 0.1813 and 0.1729 for the two
+deterministic controls. Therefore pooled PE has not passed the next gate. The
+next step is protocol diagnosis and candidate redesign, not a patch-token
+model.
 
 ## 5. How the files connect
 
