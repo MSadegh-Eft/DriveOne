@@ -74,9 +74,6 @@ results are:
 | tracker-score ranking | 0.1813 | 0.046 |
 | projected-box-area ranking | 0.1729 | 0.158 |
 
-| tracker-score ranking | 0.1813 | 0.046 |
-| projected-box-area ranking | 0.1729 | 0.158 |
-
 The corrected pooled-PE result is lower than both deterministic controls, and
 the task-ID comparison does not show a language gain. This makes the negative
 signal reproducible at a larger subset. It still does not prove that visual

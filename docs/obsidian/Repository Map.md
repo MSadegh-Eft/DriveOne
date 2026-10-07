@@ -25,6 +25,7 @@
 | [`docs/obsidian/Development Roadmap.md`](Development%20Roadmap.md) | Plain-language reading order and staged research plan | Repository state |
 | [`docs/refav_data_contract.md`](../../docs/refav_data_contract.md) | Formal contract and recorded real-data audit result | Official RefAV/AV2 facts |
 | [`docs/refav_baseline_smoke.md`](../../docs/refav_baseline_smoke.md) | Reproduction record and early gate decision for frozen-PE controls | External subset and PE artifacts |
+| [`docs/DriveOne_Project_Guide.md`](../DriveOne_Project_Guide.md) | Linear, plain-language explanation of the project, roadmap, code, and current evidence | Repository state and external run artifacts |
 | [`README.md`](../../README.md) | Short entry point for contributors | All of the above |
 | [`CONTRIBUTING.md`](../../CONTRIBUTING.md) | Rules that prevent invalid experiments and untracked artifacts | Project policy |
 | [`.gitignore`](../../.gitignore) | Keeps data, weights, reports, manifests, and build artifacts out of Git | Git |

@@ -103,8 +103,6 @@ small and uses one seed. It does mean that adding patch tokens now would hide
 an unresolved baseline problem. Read [[Code Walkthrough - frozen baselines]]
 and `docs/refav_baseline_smoke.md` before running more model code.
 
-The next experiment is a baseline replication/debugging gate:
-
 The corrected 500-group-per-split replication is now complete. Pooled PE scored
 0.0476 test mAP and task ID with the same pooled image scored 0.0576;
 tracker-score and projected-box-area controls scored 0.1813 and 0.1729 on the

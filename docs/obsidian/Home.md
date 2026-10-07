@@ -8,6 +8,11 @@ This first question is useful because it can disprove the proposed candidate int
 
 ## Start here
 
+If you prefer one document instead of a note-by-note vault, start with the
+[standalone project guide](../DriveOne_Project_Guide.md). It explains the whole
+project in order and uses simple English. The generated PDF is kept locally at
+`reports/DriveOne_Project_Guide.pdf` and is intentionally ignored by Git.
+
 Read [[Development Roadmap]] first. It gives both reading order and experiment order. Then read:
 
 1. [[Project Overview]] — what we are trying to learn and what we are deliberately not claiming.
