@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import random
@@ -11,6 +12,8 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+from PIL import Image
 
 import numpy as np
 import torch
@@ -42,7 +45,9 @@ def group_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, str, int], list[di
     return dict(sorted(groups.items()))
 
 
-def box_features(row: dict[str, Any], image_width: float = 1920.0, image_height: float = 1200.0) -> list[float]:
+def box_features(row: dict[str, Any], image_width: float, image_height: float) -> list[float]:
+    if image_width <= 0 or image_height <= 0:
+        raise ValueError("Source image dimensions must be positive")
     box = row.get("projected_box")
     if box is None:
         coords = [0.0] * 4
@@ -67,12 +72,16 @@ class CandidateScorer(nn.Module):
         self.candidate = nn.Sequential(nn.Linear(candidate_dim, 64), nn.LayerNorm(64), nn.GELU())
         self.category = nn.Embedding(category_count, 16)
         context_dim = 0
-        if mode == "task_id":
-            self.prompt = nn.Embedding(prompt_count, 32)
-            context_dim = 32
-        elif mode == "pooled_pe":
+        if mode == "pooled_pe":
             self.image = nn.Linear(image_dim, 64)
             self.text = nn.Linear(text_dim, 64)
+            context_dim = 128
+        elif mode == "task_id":
+            # Keep the visual input fixed when comparing a learned task ID
+            # with natural-language conditioning.  Otherwise the comparison
+            # would change both the image input and the question input.
+            self.prompt = nn.Embedding(prompt_count, 64)
+            self.image = nn.Linear(image_dim, 64)
             context_dim = 128
         elif mode in ("candidate_only", "metadata_only"):
             context_dim = 0
@@ -84,14 +93,17 @@ class CandidateScorer(nn.Module):
         values = [self.candidate(candidate), self.category(category)]
         if self.mode == "task_id":
             assert prompt_id is not None
-            values.append(self.prompt(prompt_id))
+            assert image is not None
+            values.extend([self.image(image), self.prompt(prompt_id)])
         elif self.mode == "pooled_pe":
             assert image is not None and text is not None
             values.extend([self.image(image), self.text(text)])
         return self.head(torch.cat(values, dim=-1)).squeeze(-1)
 
 
-def average_precision(labels: list[int], scores: list[float]) -> float | None:
+def average_precision(labels: list[int | None], scores: list[float]) -> float | None:
+    if len(labels) != len(scores):
+        raise ValueError("One score is required per candidate")
     positive_count = sum(label == POSITIVE for label in labels)
     negative_count = sum(label in NEGATIVES for label in labels)
     if not positive_count or not negative_count:
@@ -143,16 +155,95 @@ def ranking_metrics(groups: dict[tuple[str, str, int], list[dict[str, Any]]], sc
         if mask.any():
             ece += float(mask.mean()) * abs(float(probabilities[mask].mean()) - float(targets[mask].mean()))
     output["ECE"] = float(ece)
+    output["calibration_labeled_candidate_count"] = len(targets)
+    output["calibration_positive_fraction"] = float(targets.mean())
+    output["reliability_bins"] = [
+        {
+            "lower": float(left), "upper": float(right), "count": int(mask.sum()),
+            "mean_probability": float(probabilities[mask].mean()) if mask.any() else None,
+            "positive_fraction": float(targets[mask].mean()) if mask.any() else None,
+        }
+        for left, right in zip(bins[:-1], bins[1:])
+        for mask in [(probabilities >= left) & (probabilities < right if right < 1 else probabilities <= right)]
+    ]
     return output
 
 
-def build_inputs(rows: list[dict[str, Any]], category_ids: dict[str, int], prompt_ids: dict[str, int], feature_payload: dict[str, Any], device: torch.device) -> dict[int, dict[str, torch.Tensor]]:
-    image_lookup = {key: value.float() for key, value in zip(feature_payload["image_keys"], feature_payload["image_features"])}
-    text_lookup = {key: value.float() for key, value in zip(feature_payload["text_keys"], feature_payload["text_features"])}
+def validate_splits(rows_by_split: dict[str, list[dict[str, Any]]]) -> None:
+    seen_logs: dict[str, str] = {}
+    for split, rows in rows_by_split.items():
+        if not rows:
+            raise ValueError(f"Empty split: {split}")
+        seen_candidates = set()
+        group_images = {}
+        for row in rows:
+            log = str(row["log_id"])
+            if log in seen_logs and seen_logs[log] != split:
+                raise ValueError(f"Log {log} occurs in both {seen_logs[log]} and {split}")
+            seen_logs[log] = split
+            group = (log, str(row["prompt"]), int(row["timestamp_ns"]))
+            candidate = (*group, row["track_id"])
+            if candidate in seen_candidates:
+                raise ValueError(f"Duplicate candidate in {split}: {candidate}")
+            seen_candidates.add(candidate)
+            image = str(row["image_path"])
+            if group in group_images and group_images[group] != image:
+                raise ValueError(f"Candidates in {group} do not share one image")
+            group_images[group] = image
+            if row.get("label") not in (None, 0, 1, 2):
+                raise ValueError("Labels must be referred=0, related=1, other=2, or null")
+
+
+def source_image_size(rows: list[dict[str, Any]]) -> tuple[int, int]:
+    sizes = set()
+    for path in sorted({str(row["image_path"]) for row in rows}):
+        with Image.open(path) as image:
+            sizes.add(image.size)
+    if len(sizes) != 1:
+        raise ValueError(f"This smoke test requires a single source image size, found {sorted(sizes)}")
+    return next(iter(sizes))
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def stratified_metrics(groups, scores):
+    per_log = {
+        log: ranking_metrics({key: rows for key, rows in groups.items() if key[0] == log}, scores)
+        for log in sorted({key[0] for key in groups})
+    }
+    bins = {"1-64": (1, 64), "65-128": (65, 128), "129-256": (129, 256), "257+": (257, math.inf)}
+    return {
+        "per_log": per_log,
+        "candidate_count": {
+            name: ranking_metrics({key: rows for key, rows in groups.items() if low <= len(rows) <= high}, scores)
+            for name, (low, high) in bins.items()
+        },
+    }
+
+
+def build_inputs(
+    rows: list[dict[str, Any]],
+    category_ids: dict[str, int],
+    prompt_ids: dict[str, int],
+    feature_payload: dict[str, Any],
+    device: torch.device,
+    image_width: float,
+    image_height: float,
+) -> dict[int, dict[str, torch.Tensor]]:
+    if len(feature_payload["image_keys"]) != len(feature_payload["image_features"]) or len(feature_payload["text_keys"]) != len(feature_payload["text_features"]):
+        raise ValueError("Feature key and tensor counts disagree")
+    image_lookup = {key: F.normalize(value.float().to(device), dim=0) for key, value in zip(feature_payload["image_keys"], feature_payload["image_features"])}
+    text_lookup = {key: F.normalize(value.float().to(device), dim=0) for key, value in zip(feature_payload["text_keys"], feature_payload["text_features"])}
     output = {}
     for row in rows:
-        candidate = box_features(row)
-        category = category_ids.get(str(row.get("name", "")), 0)
+        candidate = box_features(row, image_width=image_width, image_height=image_height)
+        category = category_ids.get(str(row["raw_tracker_label"]), 0)
         image = image_lookup[str(row["image_path"])]
         text = text_lookup[str(row["prompt"])]
         output[id(row)] = {
@@ -160,8 +251,8 @@ def build_inputs(rows: list[dict[str, Any]], category_ids: dict[str, int], promp
             "metadata": torch.tensor(metadata_features(row), dtype=torch.float32, device=device),
             "category": torch.tensor(category, dtype=torch.long, device=device),
             "prompt_id": torch.tensor(prompt_ids.get(str(row["prompt"]), 0), dtype=torch.long, device=device),
-            "image": F.normalize(image.to(device), dim=0),
-            "text": F.normalize(text.to(device), dim=0),
+            "image": image,
+            "text": text,
         }
     return output
 
@@ -224,28 +315,73 @@ def main() -> int:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--image-width", type=int, help="Optional assertion about source width; actual files are inspected")
+    parser.add_argument("--image-height", type=int, help="Optional assertion about source height; actual files are inspected")
+    parser.add_argument("--threads", type=int, default=2)
     args = parser.parse_args()
+    if args.epochs < 1 or args.threads < 1:
+        parser.error("epochs and threads must be positive")
+    torch.set_num_threads(args.threads)
+    torch.use_deterministic_algorithms(True)
     seed_everything(args.seed)
     device = torch.device(args.device)
     rows_by_split = {name: read_jsonl(path) for name, path in [("train", args.train), ("validation", args.validation), ("test", args.test)]}
+    validate_splits(rows_by_split)
     groups_by_split = {name: group_rows(rows) for name, rows in rows_by_split.items()}
     all_rows = [row for rows in rows_by_split.values() for row in rows]
-    categories = sorted({str(row.get("name", "")) for row in all_rows})
-    category_ids = {name: index for index, name in enumerate(categories)}
+    categories = sorted({str(row["raw_tracker_label"]) for row in rows_by_split["train"]})
+    category_ids = {name: index + 1 for index, name in enumerate(categories)}
+    width, height = source_image_size(all_rows)
+    if (args.image_width is not None and args.image_width != width) or (args.image_height is not None and args.image_height != height):
+        parser.error(f"Image-size assertion disagrees with actual files: {width}x{height}")
     train_prompts = sorted({str(row["prompt"]) for row in rows_by_split["train"]})
     prompt_ids = {prompt: index + 1 for index, prompt in enumerate(train_prompts)}
     prompt_ids["<unk>"] = 0
-    feature_payload = torch.load(args.features, map_location="cpu", weights_only=False)
-    inputs = {name: build_inputs(rows, category_ids, prompt_ids, feature_payload, device) for name, rows in rows_by_split.items()}
+    feature_payload = torch.load(args.features, map_location="cpu", weights_only=True)
+    if feature_payload.get("config") != "PE-Core-L14-336" or feature_payload.get("pretrained") is not True:
+        raise ValueError("This control protocol requires pretrained PE-Core-L14-336 features")
+    inputs = {
+        name: build_inputs(rows, category_ids, prompt_ids, feature_payload, device, width, height)
+        for name, rows in rows_by_split.items()
+    }
 
-    results: dict[str, Any] = {"protocol": {"seed": args.seed, "epochs": args.epochs, "loss": "BCE on labeled candidates only", "unknown_candidates": "retained at evaluation and omitted from training loss", "device": str(device)}, "models": {}}
+    results: dict[str, Any] = {
+        "protocol": {
+            "seed": args.seed,
+            "epochs": args.epochs,
+            "loss": "BCE on labeled candidates only",
+            "unknown_candidates": "retained at evaluation and omitted from training loss",
+            "device": str(device),
+            "version": "refav-baseline-smoke-v2",
+            "source_image_size": [width, height],
+            "dtype": "float32",
+            "torch_version": str(torch.__version__),
+            "threads": args.threads,
+            "script_sha256": sha256_file(Path(__file__)),
+            "features_sha256": sha256_file(args.features),
+            "inputs": {name: {"path": str(path.resolve()), "sha256": sha256_file(path)} for name, path in (("train", args.train), ("validation", args.validation), ("test", args.test))},
+            "category_vocabulary": "raw tracker categories fitted on training rows only; unknown=0",
+            "query_holdout": "exact prompt overlap exists; this is not a template-disjoint test",
+            "task_id_conditioning": "pooled PE image plus learned prompt ID",
+            "pooled_pe_conditioning": "pooled PE image plus PE text",
+            "matching_limit": "context and scorer widths match; total trainable parameter counts differ",
+            "latency_limit": "cached-feature training/evaluation only; no end-to-end latency claim",
+        },
+        "models": {},
+    }
     for mode in ("candidate_only", "metadata_only", "task_id", "pooled_pe"):
-        model = CandidateScorer(3 if mode == "metadata_only" else 12, len(categories), mode, len(prompt_ids)).to(device)
+        seed_everything(args.seed)
+        model = CandidateScorer(3 if mode == "metadata_only" else 12, len(categories) + 1, mode, len(prompt_ids)).to(device)
         start = time.perf_counter()
         train_one(model, groups_by_split["train"], inputs["train"], args.epochs, args.seed)
         elapsed = time.perf_counter() - start
-        model_results = {split: ranking_metrics(groups_by_split[split], score_groups(model, groups_by_split[split], inputs[split])) for split in ("train", "validation", "test")}
-        results["models"][mode] = {"train_seconds": elapsed, "metrics": model_results, "parameter_count": sum(parameter.numel() for parameter in model.parameters())}
+        model_scores = {split: score_groups(model, groups_by_split[split], inputs[split]) for split in ("train", "validation", "test")}
+        model_results = {split: ranking_metrics(groups_by_split[split], model_scores[split]) for split in ("train", "validation", "test")}
+        results["models"][mode] = {
+            "train_seconds": elapsed, "metrics": model_results,
+            "stratified_metrics": {split: stratified_metrics(groups_by_split[split], model_scores[split]) for split in ("validation", "test")},
+            "parameter_count": sum(parameter.numel() for parameter in model.parameters()),
+        }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(results, indent=2, sort_keys=True))
