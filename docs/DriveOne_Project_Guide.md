@@ -179,69 +179,327 @@ Leakage means that information related to the answer enters the input in an unfa
 
 ## 5. Full research roadmap
 
+The roadmap is a sequence of research gates. Each gate answers one question and
+produces an artifact that the next gate can use. This is important because a
+large model can produce impressive numbers even when the candidate list, labels,
+or train/test split already reveal the answer. We therefore validate the
+experiment before increasing model size or adding more data.
+
 ### Stage 0 — Understand the contract
 
-Read the proposal and define exactly what one example means. Decide whether the first task is entity ranking, question answering, or trajectory ranking. We chose RefAV referred-track ranking because it is the smallest test with public natural-language interaction descriptions and object tracks.
+**Question:** What exactly is one prediction problem?
 
-**Output:** a written definition of one group and its labels.
+First define one **ranking group** as:
+
+```text
+(log_id, prompt, decision_timestamp)
+    -> one shared camera frame
+    -> all eligible tracker candidates at that time
+    -> one or more REFERRED_OBJECT positives
+    -> RELATED_OBJECT, OTHER_OBJECT, or unknown candidates
+```
+
+The group definition also fixes what the model may see. The question is an
+input. The image is an input. A candidate representation may contain declared
+geometry, but it may not contain the relevance label, future information, or a
+candidate ID that has a hidden meaning. An unmatched track remains unknown; it
+is not silently changed into `OTHER_OBJECT`.
+
+This stage also decides which claim is being tested. The first claim is not
+“the model drives safely.” It is narrower: can language and one image rank a
+referred track above the other candidates? That makes RefAV useful as a cheap
+diagnostic before testing trajectories or closed-loop planning.
+
+**Output:** the data-contract document, label rules, candidate rules, leakage
+rules, and a list of claims that this task cannot test.
+
+**Do not proceed if:** the positive label, candidate pool, timestamp, or
+unknown-row policy is ambiguous.
 
 ### Stage 1 — Prepare data
 
-Use the official RefAV annotation file, public tracker output, Argoverse 2 poses, camera calibration, camera images, and map data. Convert tracker positions from the city frame into the ego-vehicle frame. Match tracker objects to RefAV annotated objects using same-category one-to-one assignment within a 2 m ego-frame threshold.
+**Question:** Can the raw sources be converted into one reproducible table?
 
-**Output:** a hashed Feather candidate manifest.
+The preparation step pins the exact annotation artifact, tracker artifact,
+Argoverse 2 sensor split, repository versions, and file hashes. Large files and
+model weights stay outside Git, but their paths and hashes are recorded in the
+manifest. This lets another person check whether they used the same inputs.
+
+The adapter then performs the transformations that the raw sources do not
+provide together:
+
+1. Load prompt-specific RefAV annotations.
+2. Load tracker frames and validate that every per-frame array has the same
+   length as `track_id`.
+3. Load the ego pose for each tracker timestamp.
+4. Convert tracker cuboid centers from the city coordinate frame to the
+   ego-vehicle frame.
+5. Match tracker candidates to annotated objects using same-category,
+   one-to-one matching within a fixed 2 m center-distance threshold.
+6. Transfer the prompt label only when a valid match exists.
+7. Find one camera image near the timestamp and project each candidate box into
+   that image.
+8. Apply the declared range and map-ROI filters.
+9. Write one row per candidate, preserving unmatched candidates.
+
+**Output:** a derived Feather manifest plus a preparation summary. The Feather
+file is the fixed candidate table used by later controls; it is not an official
+RefAV submission file.
+
+**Do not proceed if:** the conversion depends on relevance labels to choose
+timestamps, remove candidates, or select the camera frame.
 
 ### Stage 2 — Audit the data
 
-Check required columns, array lengths, duplicate candidate keys, labels, timestamps, camera association, projections, candidate coverage, and log-disjoint splits. Record all source URLs, repository commits, file hashes, licenses, and local paths.
+**Question:** Does the derived table obey the written contract?
 
-**Output:** a machine-readable audit report and a list of limitations.
+The verifier checks both structure and scientific validity. Structural checks
+include required columns, numeric timestamps, array lengths, valid labels,
+duplicate `(log_id, prompt, timestamp, track_id)` keys, and readable camera
+paths. Scientific checks include:
+
+- every ranking group has at least one referred track and a declared negative
+  or unknown pool;
+- every candidate in a group uses the same image path;
+- log IDs do not cross train, validation, and test;
+- prompt overlap is reported rather than assumed to be semantic holdout;
+- label fields and future timestamps are excluded from learned features;
+- camera projection status and missing-camera rows are visible;
+- candidate counts and unmatched counts are recorded;
+- source URLs, local paths, licenses, versions, and hashes are saved.
+
+The audit is deliberately strict. A failed audit is not a minor warning if it
+means the model would receive different candidate lists for different methods
+or if test information entered the training features.
+
+**Output:** a JSON audit report, manifest hash, coverage statistics, and an
+explicit list of limitations.
+
+**Do not proceed if:** log-disjoint evaluation is impossible, candidate
+construction changes with the label, or the camera association cannot be
+reproduced.
 
 ### Stage 3 — Check the PE interface
 
-Load the official `PE-Core-L14-336` checkpoint. Run its image and text paths. Inspect the tensor shapes and timing. The current real-image test found 576 patch tokens of width 1024, pooled image features of width 1024, text features of width 1024, and an official CLIP text context of 32 tokens.
+**Question:** Can the proposed frozen backbone actually expose the features
+needed by DriveOne?
 
-**Output:** a shape/configuration report. This does not prove that patch tokens improve ranking.
+The smoke test loads the official `PE-Core-L14-336` checkpoint and runs the
+released image and text paths. It records the checkpoint/configuration,
+preprocessing, tensor shapes, token count, dtype, device, and latency. The
+current real-image run found 577 sequence tokens including the class token,
+576 patch tokens after removing it, token width 1024, pooled image width 1024,
+text width 1024, and an official CLIP text context length of 32 tokens.
+
+The test also checks the practical interface questions that shape the model:
+
+- whether the returned sequence is before attention pooling;
+- whether the image transform uses the expected resize and normalization;
+- whether the prompt is truncated by the tokenizer;
+- whether a projected candidate region can be represented consistently;
+- whether the same checkpoint can produce cached features for every split.
+
+**Output:** a shape/configuration report and a reproducible feature-extraction
+command. This proves that the interface is available; it does not prove that
+patch tokens improve ranking.
+
+**Do not proceed if:** the checkpoint does not expose usable patch tokens, the
+text is silently truncated, or the preprocessing differs between baselines.
 
 ### Stage 4 — Run deterministic controls
 
-Before training a multimodal model, rank candidates using random order, tracker score, distance, projected box area, category frequency, and an oracle. These controls reveal whether the dataset or candidate generator already makes the answer easy.
+**Question:** Is the task already solvable from simple candidate properties?
 
-**Output:** control metrics, candidate counts, and hard-negative results.
+Before training any neural scorer, rank the same candidate groups with simple
+rules:
+
+- random order, as a lower reference;
+- tracker confidence, to expose tracker-quality shortcuts;
+- nearest distance, to expose spatial priors;
+- projected box area, to expose visibility and object-size priors;
+- category frequency, to expose class imbalance;
+- oracle order, as an upper bound using the target label.
+
+The controls must use the exact same exported candidate rows as the learned
+baselines. Report the full pool, not only candidates with known labels, because
+unknown rows still push a referred object down in the real candidate list. The
+main ranking measures are average precision per group and mean average
+precision across groups. Recall@1 is also useful, but multiple referred
+objects make it less complete than mAP.
+
+**Output:** control metrics, candidate-count strata, per-log metrics,
+score-matched hard-negative metrics, and the oracle ceiling.
+
+**Do not proceed if:** a trivial control is already close to the proposed
+model, or if the oracle ceiling is low because the candidate generator often
+misses the referred object.
 
 ### Stage 5 — Audit shortcuts
 
-Match negatives to positives by tracker score and then by tracker score plus projected box size. Keep the exact candidate set fixed across methods. Inspect results by log and candidate count.
+**Question:** Does the apparent signal come from candidate construction rather
+than image-language reasoning?
 
-**Output:** a defensible shortcut test or a reason to redesign the candidate pool.
+A candidate-only shortcut occurs when geometry, tracker metadata, or candidate
+availability identifies the positive. To test this, create fixed comparisons:
+
+1. Compare the full candidate pool with random negatives.
+2. Match negatives to positives by tracker confidence.
+3. Match again by tracker confidence and projected box size or log-area.
+4. Keep those exact rows unchanged for every model and control.
+5. Break metrics down by log, candidate count, projection status, and object
+   category.
+
+The matching operation is only an evaluation diagnostic. It must not look at
+the target label while constructing the original candidate pool, and it must
+not remove a candidate differently for one method than another. If the
+projected-area control remains strong after score-and-size matching, then the
+current protocol still carries a visibility or geometry signal. A model that
+wins on the unpaired pool may only be learning that signal.
+
+**Output:** a shortcut report that says whether the candidate protocol is
+usable, repairable, or uninterpretable.
+
+**Do not proceed if:** candidate-only or metadata-only controls remain within a
+predeclared practical margin of the model, or if hard-negative construction
+requires looking at relevance labels.
 
 ### Stage 6 — Frozen baseline gate
 
-Run candidate-only, metadata-only, task-ID, and pooled-PE models on fixed subsets. Use log-disjoint splits and one seed for the first smoke test. Add another seed only after the first run is reproducible.
+**Question:** Does language-conditioned image input add value after the simple
+controls have been measured?
 
-**Output:** a corrected baseline report with ranking and calibration metrics.
+Run four small learned controls on fixed exported groups:
+
+- **candidate-only:** declared candidate geometry and category features;
+- **metadata-only:** explicit tracker or distance metadata used as a shortcut
+  control;
+- **task ID:** the same pooled image representation as the pooled-PE model,
+  but with a learned ID for the prompt/task instead of natural-language text;
+- **pooled PE:** the same candidate features and pooled PE image features,
+  plus PE text features for the prompt.
+
+The task-ID and pooled-PE models must use matched image inputs, candidate rows,
+training data, optimizer budget, precision, batch size, and hardware. Otherwise
+the comparison cannot answer whether language helps. The first run uses one
+seed only to test reproducibility. After the command, data, and metrics are
+stable, repeat with a second seed and report confidence intervals.
+
+The gate reports mAP and Recall@1, but it also reports NLL, Brier score, ECE,
+reliability bins, per-log results, candidate-count results, and hard-negative
+results. Calibration matters because a ranking score may later be used for
+abstention or thresholding. The learned baseline uses labeled rows for its
+binary loss while retaining unknown rows in evaluation; this distinction is
+recorded rather than hidden.
+
+**Output:** a corrected baseline report with exact artifact hashes, seed,
+feature-cache metadata, ranking metrics, calibration metrics, and timing
+scope.
+
+**Do not proceed if:** pooled PE fails to beat the strongest matched shortcut,
+task ID is not a fair comparison, or the result cannot be reproduced from the
+same cached features.
 
 ### Stage 7 — Minimal DriveOne model
 
-Only if the pooled gate is meaningful, add frozen PE patch tokens, one question encoder, one small fusion block, one candidate projection, and one shared scorer. Use one frame. Do not add PE-Spatial, temporal input, Qwen, or trajectories at this point.
+**Question:** Do spatial visual tokens provide information that pooled features
+discard?
 
-**Move on when:** the patch model beats pooled PE and task ID by a predeclared margin on held-out logs and wording, without a serious calibration regression.
+Only after the pooled gate is meaningful, add the smallest proposed model:
+frozen PE patch tokens, one question representation, one small
+question-conditioned fusion block, one candidate projection, and one shared
+scoring function. Use one image frame and the same candidate pool. Do not add
+PE-Spatial, temporal frames, six cameras, Qwen, distillation, or trajectories.
+
+The patch model is compared against pooled PE and task ID with matched
+backbone, image resolution, candidate set, training data, precision, and
+hardware. The previously selected practical threshold is at least +5 Recall@1
+points or +0.03 mAP over the strongest matched baseline, with confidence
+intervals excluding zero across two seeds. The threshold must be fixed before
+looking at the final test result.
+
+**Move on when:** the patch model improves held-out wording and log-disjoint
+ranking without a material calibration regression and without relying on a
+candidate-only shortcut.
 
 ### Stage 8 — Stress the result
 
-Test candidate-count shift, held-out wording, paraphrases, log-disjoint scenes, city-disjoint scenes, and independently generated candidates. Report per-task results and failure cases.
+**Question:** Does the improvement survive changes that matter at deployment?
+
+Test candidate-count shifts, held-out wording and paraphrases, scene/log and
+city disjointness, changed candidate generators, and independently generated
+hard negatives. Keep the ranking task separate from candidate recall: a scorer
+cannot receive credit for selecting an object that was never proposed.
+
+Report per-log and per-count results, confidence intervals, calibration,
+abstention coverage, and representative failures. A result that works only for
+one prompt family or one tracker is a limited diagnostic, not generalization.
 
 ### Stage 9 — Expand the task
 
-Add PE-Spatial-L14-448, four frames over about 1.5 seconds, more cameras, DriveLM bounded answer tasks, NAVSIM/GTRS trajectories, and Waymo preference ranking as separate tracks. Each extension needs matched baselines.
+**Question:** Does the mechanism transfer to other bounded candidate types?
+
+Add new tracks separately rather than combining them into one headline score:
+
+- PE-Spatial-L14-448, with resolution, preprocessing, and compute accounted
+  for;
+- four-frame temporal input, with frame timestamps and motion assumptions
+  stated;
+- multiple cameras, with camera selection and missing-view rules stated;
+- bounded DriveLM/nuScenes answers, only after defining candidate conversion;
+- independently generated NAVSIM/GTRS trajectories, separating ranking from
+  imitation, open-loop, and closed-loop metrics;
+- Waymo preference ranking, only if the candidate and preference protocol is
+  independently reproducible.
+
+Every extension needs its own task-specific baseline and data-validity audit.
+A strong entity result does not automatically validate trajectory scoring.
 
 ### Stage 10 — Distill last
 
-Only after the non-distilled student is understood should Qwen or another teacher be evaluated. A teacher cannot repair an invalid task or hide a candidate shortcut.
+**Question:** Can a larger model teach a smaller scorer without changing what
+the task measures?
+
+Only after the non-distilled student is understood should Qwen or another
+teacher be evaluated. First compare the direct teacher score with ground truth,
+simulator labels, or human/rater labels. Then compare training from labels
+with training from teacher targets. Record teacher errors, confidence, prompt
+truncation, and objective mismatch.
+
+Distillation can reduce compute, but it cannot repair an invalid candidate
+pool, missing positives, label leakage, or a shortcut. If the student copies a
+teacher that ranks retrieval relevance rather than driving quality, the result
+may look efficient while measuring the wrong thing.
+
+### Why this order matters
+
+The order separates four questions that are often mixed together:
+
+1. **Data validity:** are the labels, candidates, images, and splits valid?
+2. **Representation value:** do pooled or patch features add information over
+   simple controls?
+3. **Generalization:** does the gain survive new wording, logs, planners, and
+   candidates?
+4. **System value:** is the complete pipeline accurate, calibrated, and fast?
+
+At the current point, data preparation, PE access, deterministic controls, and
+the corrected pooled baselines are complete. The result has not passed the
+shortcut/frozen-baseline gate, so patch tokens and all later stages remain
+paused.
 
 ## 6. The current data pipeline
 
-The pipeline has two parts: building the candidate table and evaluating models.
+The pipeline turns several incompatible raw sources into one fixed ranking
+dataset. It has three boundaries:
+
+1. **Preparation boundary:** raw annotations, tracker output, poses,
+   calibration, images, and maps become candidate rows.
+2. **Evaluation boundary:** the rows are checked, split, and exported into
+   identical groups for every method.
+3. **Model boundary:** images and cached PE features are passed to controls or
+   a scorer. No model is allowed to rebuild the candidate pool.
+
+Keeping these boundaries separate makes it possible to tell whether a failure
+comes from missing data, bad labels, a shortcut, or the neural model.
 
 ```text
 RefAV annotations
@@ -272,29 +530,193 @@ RefAV annotations
                     train_refav_baselines.py
 ```
 
-### Source annotations
+### 6.1 Source annotations
 
-The RefAV annotation file contains prompt-specific object relevance labels and object geometry. It does not contain the tracker confidence, camera image path, or complete candidate interface needed by DriveOne.
+The RefAV annotation file is the source of prompt-specific supervision. It
+contains a log ID, a natural-language prompt, a timestamp, annotated object
+geometry, and a mining category such as `REFERRED_OBJECT`,
+`RELATED_OBJECT`, or `OTHER_OBJECT`. It does not contain everything needed by
+DriveOne: in particular, it does not provide the public tracker confidence,
+the derived camera image path, or a complete candidate list containing
+unmatched tracker objects.
 
-### Tracker predictions
+The annotation is therefore used for labels and matching targets. It is not
+used to decide which timestamps are valid after preparation has started. That
+distinction prevents the pipeline from selecting only timestamps where the
+answer is easy to find.
 
-The public Valeo4Cast tracker file supplies candidate objects, timestamps, positions, sizes, classes, and tracker scores. These objects are potential candidates, not ground truth.
+### 6.2 Tracker predictions
 
-### Coordinate conversion
+The public Valeo4Cast tracker file is the source of candidate objects. A frame
+contains arrays such as:
 
-Tracker positions are in the city frame. Camera projection and RefAV matching use the ego-vehicle frame. The adapter uses the AV2 pose at the timestamp to transform positions and compute ego-relative distance and yaw.
+```text
+track_id, score, label, translation_m, size, name, yaw, timestamp_ns
+```
 
-### Matching
+All arrays in one frame must have the same length. The tracker output is not
+ground truth. It is a proposal mechanism: it says which objects a deployed
+system might ask the scorer to rank. This is why tracker confidence is treated
+as a control and is excluded from the learned DriveOne input.
 
-For each object class, the adapter computes distances between tracker centers and annotation centers. Hungarian assignment makes the matching one-to-one. A match is accepted only within 2 m. This transfers the prompt label to the tracker candidate without allowing one candidate to match several annotations.
+The loader sorts frames by their explicit timestamp and rejects duplicate
+timestamps. Sorting makes the preparation deterministic when a source pickle
+contains a small number of out-of-order frames; rejecting duplicates avoids an
+ambiguous decision group.
 
-### Camera association
+### 6.3 Coordinate conversion
 
-Each group uses one shared `ring_front_center` image chosen near the decision timestamp. Every candidate in that group points to the same image. Candidates outside the image view are retained with `OUT_OF_VIEW` status, because removing them would make the pool depend on visual visibility.
+Tracker centers are stored in the city coordinate frame. A camera is mounted on
+the ego vehicle, and RefAV matching is performed in the ego frame. For each
+timestamp, the adapter loads the AV2 pose and applies the inverse pose transform:
 
-### ROI and range filtering
+```text
+point_ego = inverse(city_from_ego_pose) * point_city
+```
 
-The adapter applies the official-style maximum range and map ROI checks available from the downloaded AV2 assets. These are infrastructure filters. They are not relevance labels.
+The converted position is used to calculate ego-relative distance and to build
+the candidate box for camera projection. The vehicle yaw is also removed when
+the tracker box yaw is written to the manifest. If this transform were wrong,
+the same object could appear far from its true location, fail matching, or be
+projected into the wrong image area.
+
+### 6.4 Selecting decision timestamps without labels
+
+For each prompt, the adapter starts from all timestamps present in the
+annotation file. It keeps a timestamp only when infrastructure is available:
+
+- the tracker has a frame at that timestamp;
+- the AV2 pose table has a row at that timestamp;
+- a `ring_front_center` image exists within the configured 100 ms tolerance.
+
+The selection function does not inspect `REFERRED_OBJECT`, `RELATED_OBJECT`, or
+`OTHER_OBJECT` when making this decision. The resulting timestamp list is the
+observation window for that prompt. Later, candidate rows are created for every
+selected prompt/timestamp pair.
+
+This is a key anti-leakage rule. If timestamps were kept only when a referred
+track was visible, the candidate pool would already encode the target.
+
+### 6.5 Matching tracker candidates to annotated objects
+
+At one prompt and timestamp, the adapter groups tracker candidates and
+annotations by object category. It computes center distances in the ego frame
+and solves a Hungarian assignment separately for each category. A pair becomes
+a match only when its center distance is at most 2 m.
+
+The one-to-one rule matters. Without it, several tracker boxes could inherit
+the same annotation label, which would inflate the number of positives and make
+the ranking problem artificial. A matched annotation transfers its mining
+category to the tracker candidate. A candidate with no match receives a null
+label and `UNMATCHED_TRACK` status; it stays in the group.
+
+The adapter also records the match distance and annotated track UUID. These
+fields are useful for audits, but they are not allowed as learned candidate
+features because they are close to target construction.
+
+### 6.6 Choosing one shared camera frame
+
+The initial pilot uses one camera, `ring_front_center`, for every candidate in
+a group. The nearest image timestamp is selected within 100 ms of the decision
+timestamp. The selected path, image timestamp, and time difference are written
+to every row in the group.
+
+Sharing the image is intentional: a model must compare candidates under the
+same visual evidence. It also makes the first experiment cheap. The limitation
+is that objects outside this camera view remain difficult or impossible to
+recognize. They are kept with `OUT_OF_VIEW` status instead of being deleted,
+because deleting them would make candidate availability depend on visibility.
+
+### 6.7 Projecting candidate boxes
+
+For each tracker cuboid, the adapter creates its eight 3-D corners in the ego
+frame. It uses the AV2 camera extrinsics and intrinsics to project those corners
+into the image. The smallest valid rectangle around the visible corners is
+stored as:
+
+```text
+(x_min, y_min, x_max, y_max)
+```
+
+Coordinates are clipped to the camera image dimensions. A candidate is marked
+`PROJECTED` only when it has valid depth and a box area greater than one pixel.
+Otherwise it receives `OUT_OF_VIEW` or a missing-camera status. The projection
+is used for geometry controls and future crop experiments, but projected area
+must be treated as a possible shortcut rather than as evidence of grounding.
+
+### 6.8 Range and map-ROI filtering
+
+The adapter removes tracker boxes beyond the configured 50 m distance and
+boxes outside the available AV2 region-of-interest raster. These filters limit
+the pilot to the part of the scene supported by the source evaluation setup.
+They are infrastructure filters, not relevance labels. The code records the
+ROI decision and keeps the filter rule fixed for all methods.
+
+### 6.9 The derived candidate row and group
+
+After these operations, one row contains source bookkeeping, prompt and time,
+tracker identity, tracker metadata, ego-frame geometry, transferred label,
+camera metadata, projection status, and match status. A ranking group is all
+rows with the same `(log_id, prompt, timestamp_ns)`.
+
+The model never receives the whole manifest as an unstructured table. Later
+scripts load one group, construct the same candidate list for every baseline,
+and pass the image and question plus one representation per candidate. This
+prevents a model from benefiting simply because its method received more
+candidate rows.
+
+### 6.10 Contract verification
+
+`verify_refav.py` loads the manifest through `refav_contract.py`. The contract
+layer normalizes aliases, converts known label names to numeric IDs, checks
+required fields, and preserves unknown fields for auditing. It then checks
+duplicate keys, valid label values, shared camera association, group coverage,
+log-disjoint splits, prompt overlap, and feature-redaction rules.
+
+The verifier produces an audit JSON with counts and failures. In strict mode a
+failed required check returns a nonzero exit code. This makes the audit part of
+the experiment rather than a manual claim in a notebook.
+
+### 6.11 Planning splits and exporting a fixed subset
+
+The split planner reads only `log_id` and `prompt` to find exact prompt strings
+that occur in at least three logs. It selects disjoint log triplets and assigns
+one log to train, one to validation, and one to test. This gives repeated
+wording across splits while preventing frames from the same log from crossing
+the split boundary. It does not prove that paraphrases or semantic templates
+are held out; that is a later experiment.
+
+The subset exporter then selects a seeded list of rankable group keys from each
+split. A rankable group has at least one referred row and at least one labeled
+negative. It copies every candidate row for each selected group, including
+unknown rows, into Feather and JSONL files. The exporter records the source
+hash, selected group keys, output hashes, and random seed. Every baseline uses
+these same exported groups.
+
+### 6.12 PE feature caching and baseline input
+
+The feature extractor loads PE once, applies the official image transform and
+tokenizer, and writes pooled image features and question text features outside
+Git. Caching makes baseline comparisons faster and ensures that candidate-only,
+task-ID, and pooled-PE models see the same frozen image representation.
+
+The cache is not an end-to-end latency result. It omits image decoding,
+resizing, PE forward time, candidate construction, calibration, and ranking.
+Those costs are measured later in the efficiency track.
+
+### 6.13 Where the pipeline currently stops
+
+The present pipeline ends after deterministic controls and corrected frozen-PE
+baselines. It has not yet implemented the patch-token fusion model. That pause
+is deliberate: projected box area and tracker-related controls are stronger
+than the current pooled model on the tested subset. Before adding a new model,
+we need to determine whether that gap comes from label transfer, tracker
+quality, shared-camera visibility, candidate geometry, or a real lack of useful
+image-language signal.
+
+This is why the pipeline is more than file conversion. It is the experiment’s
+measurement instrument. If its candidate groups or labels are invalid, a larger
+model would only make the invalid measurement more expensive.
 
 ## 7. What one candidate row means
 
@@ -569,4 +991,3 @@ Can we define valid candidates?
 ```
 
 At the current point, the first three questions have exposed a serious shortcut and the pooled baseline has not passed. That is a useful research result. The next decision should be about the validity of the candidate protocol, not about adding a larger model.
-
