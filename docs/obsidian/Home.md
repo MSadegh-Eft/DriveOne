@@ -27,14 +27,16 @@ Read [[Development Roadmap]] first. It gives both reading order and experiment o
 10. [[Current Status and Next Steps]] — the current evidence and the next experiment.
 11. [[Code Walkthrough - refav_splits]] — how repeated-prompt log splits are selected.
 12. [[Code Walkthrough - frozen baselines]] — how the first pooled-PE and shortcut controls run.
+13. [Protocol-diagnosis record](../refav_protocol_diagnosis.md) — why the current candidate pool needs repair.
 
 ## Current state in plain language
 
 The public tracker and camera assets were used to build a nine-log,
 log-disjoint repeated-prompt manifest. The frozen-PE baseline was tested on
 200 and then 500 groups per split. Pooled PE did not beat tracker-score or
-projected-box-area controls, so patch-token modeling is paused while the
-candidate and label protocol is diagnosed.
+projected-box-area controls. The CPU-only protocol diagnosis is complete and
+reports `PROTOCOL_REPAIR_REQUIRED`, so patch-token modeling remains paused
+while we design a label-independent candidate-pool repair.
 
 The PE smoke test found 576 visual patch tokens of width 1024, a
 1024-dimensional pooled image output, and a 1024-dimensional text output for

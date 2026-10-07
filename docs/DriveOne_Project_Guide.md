@@ -879,6 +879,21 @@ The first baseline run had two bugs. We kept its hashes for audit but marked the
 
 The corrected 200-group smoke test and 500-group replication both failed the pass criterion: pooled PE did not beat the deterministic tracker/geometry controls. The corrected artifacts are recorded in the config and remain outside Git.
 
+### Protocol-diagnosis gate
+
+The CPU-only diagnosis of the 500-group artifacts is complete. It confirms that
+the selected groups all contain a positive and a labeled negative, but the
+unknown-row rate is very high: 84.4% in train and about 89.8% in validation and
+test. Visibility is also split-dependent. Referred objects are more visible
+than labeled negatives in validation and test, while the direction is reversed
+in train. Deterministic controls remain much stronger than pooled PE on the
+held-out splits, including the score-and-size-matched diagnostic subset.
+
+The diagnosis is recorded in `docs/refav_protocol_diagnosis.md` and in the
+external JSON artifact. Its decision is `PROTOCOL_REPAIR_REQUIRED`. This does
+not reject every possible RefAV study, but it blocks patch-token modeling until
+we define a label-independent candidate-pool repair.
+
 ## 10. What the current result means
 
 The result supports these statements:
@@ -902,14 +917,21 @@ The present result is a reason to inspect the data protocol, not a reason to add
 
 ## 11. The next step
 
-The next step is a **protocol-diagnosis gate**.
+The protocol-diagnosis gate is complete. Its decision is
+**`PROTOCOL_REPAIR_REQUIRED`**.
 
-1. Read the per-log and candidate-count metrics stored in the corrected 500-group result.
-2. Check whether tracker geometry is acting as a proxy for how RefAV labels were transferred.
-3. Check whether visual appearance is redundant because the candidate pool already identifies the referred object through location, size, or visibility.
-4. Design a label-independent candidate-pool repair only if one is technically credible. Examples could include independently generated hard negatives, score-and-size matching, or a candidate protocol that equalizes visibility and geometry without inspecting labels.
-5. Rerun deterministic controls after the repair.
-6. Add patch tokens only if the repaired pooled baseline is reproducible and beats the strongest deterministic control by a predeclared margin.
+The immediate next step is to design one candidate-pool repair that:
+
+1. never inspects the relevance label;
+2. keeps the same timestamp, image, and candidate policy for every method;
+3. keeps unknown candidates explicit;
+4. is deterministic and hashable; and
+5. does not turn the ranking task into hand-built positive/negative pairs.
+
+After rebuilding or re-exporting that repaired pool, rerun the deterministic
+controls. Only if the controls are no longer competitive should we run a
+second-seed pooled baseline and confidence-interval check. Patch tokens remain
+deferred until those checks pass.
 
 Do not start Qwen, distillation, PE-Spatial, four-frame input, six-camera scaling, DriveLM conversion, NAVSIM/GTRS trajectories, Waymo ranking, or deployment optimization before this gate is resolved.
 

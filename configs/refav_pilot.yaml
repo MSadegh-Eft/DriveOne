@@ -38,6 +38,7 @@ source:
   baseline_replication_control_train_artifact: "controls_train.json sha256:9a7a6c7ebf956825607bf0879593c3e35f67b2b210f04e1d4b41314a68556bec"
   baseline_replication_control_validation_artifact: "controls_validation.json sha256:dc226b0b558dae3788f864c9c41210150a309b53b5a1eb3216e7ca732edab74f"
   baseline_replication_control_test_artifact: "controls_test.json sha256:a39b28f38bd488f6e92c30cb9285f0df4fc368af76a54e838908642644d88b63"
+  protocol_diagnosis_artifact: "refav_protocol_diagnosis_500.json sha256:8c705b9aba767253bf3fa5c279e32d03768c1684d4476a095a058b004ebdc0ad"
   split_manifest_sha256: "94150fb8c2a8d0dafc914e78f9f06f9b7e5887a3b5beb173bc7aa42d1092dc47"
   license: "RefAV repository MIT; Argoverse 2 data terms apply separately"
 
@@ -122,3 +123,13 @@ baseline_replication:
   seed: 0
   proceed_to_patch_tokens: false
   reason: "Corrected larger one-seed replication confirms the pooled-PE result remains below deterministic tracker/geometry controls."
+
+protocol_diagnosis:
+  subset_groups_per_split: 500
+  visibility_gap_threshold: 0.10
+  projected_area_median_ratio_threshold: 1.5
+  control_mAP_margin: 0.03
+  minimum_rankable_groups: 50
+  oracle_excluded_from_shortcut_decision: true
+  decision: PROTOCOL_REPAIR_REQUIRED
+  proceed_to_patch_tokens: false

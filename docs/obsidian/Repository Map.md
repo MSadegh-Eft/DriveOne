@@ -17,6 +17,8 @@
 | [`scripts/export_refav_subset.py`](../../scripts/export_refav_subset.py) | Exports fixed train/validation/test ranking groups and JSONL files | `pandas`, `pyarrow` |
 | [`scripts/extract_pe_features.py`](../../scripts/extract_pe_features.py) | Extracts frozen PE pooled image and text features for a subset | official `perception_models`, `torch`, Pillow |
 | [`scripts/train_refav_baselines.py`](../../scripts/train_refav_baselines.py) | Trains candidate-only, metadata-only, task-ID, and pooled-PE controls | `torch` |
+| [`scripts/diagnose_refav_protocol.py`](../../scripts/diagnose_refav_protocol.py) | Runs the CPU-only shortcut and label/geometry diagnosis on fixed subsets | `driveone.eval.refav_diagnosis` |
+| [`src/driveone/eval/refav_diagnosis.py`](../../src/driveone/eval/refav_diagnosis.py) | Computes label distributions, visibility/geometry summaries, stratified controls, and the diagnosis decision | `numpy`, `driveone.eval.refav_metrics` |
 | [`configs/refav_pilot.yaml`](../../configs/refav_pilot.yaml) | Protocol, provenance, candidate restrictions, split rules, and strict requirements | Verifier |
 | [`tests/test_refav_contract.py`](../../tests/test_refav_contract.py) | Unit tests for normalization and contract logic | Data helpers |
 | [`tests/test_refav_tracker.py`](../../tests/test_refav_tracker.py) | Unit tests for one-to-one candidate/annotation matching | Optional tracker dependencies |
@@ -25,6 +27,7 @@
 | [`docs/obsidian/Development Roadmap.md`](Development%20Roadmap.md) | Plain-language reading order and staged research plan | Repository state |
 | [`docs/refav_data_contract.md`](../../docs/refav_data_contract.md) | Formal contract and recorded real-data audit result | Official RefAV/AV2 facts |
 | [`docs/refav_baseline_smoke.md`](../../docs/refav_baseline_smoke.md) | Reproduction record and early gate decision for frozen-PE controls | External subset and PE artifacts |
+| [`docs/refav_protocol_diagnosis.md`](../../docs/refav_protocol_diagnosis.md) | Results and decision from the 500-group protocol-diagnosis gate | External diagnosis JSON |
 | [`docs/DriveOne_Project_Guide.md`](../DriveOne_Project_Guide.md) | Linear, plain-language explanation of the project, roadmap, code, and current evidence | Repository state and external run artifacts |
 | [`README.md`](../../README.md) | Short entry point for contributors | All of the above |
 | [`CONTRIBUTING.md`](../../CONTRIBUTING.md) | Rules that prevent invalid experiments and untracked artifacts | Project policy |

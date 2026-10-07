@@ -18,6 +18,14 @@ This page answers two questions: **what should I read?** and **why are we doing 
 | 9. Expand carefully | Only then consider more frames, PE-Spatial, other cameras, or other datasets | Each extension changes compute or task semantics and needs its own baseline | Separate evaluation track | The added question is justified by the previous result |
 | 10. Distill last | Compare Qwen or another teacher after the non-distilled baseline is fixed | Distillation can hide whether the small model itself works | Teacher comparison and cost report | The teacher target is valid and the baseline is reproducible |
 
+## Current location
+
+Stages 0 through 6 produced the fixed manifest, audit, PE interface report,
+deterministic controls, and corrected frozen-PE baseline. The CPU-only
+protocol-diagnosis gate then returned `PROTOCOL_REPAIR_REQUIRED`. The project is
+now between stages 6 and 7: repair and re-audit the candidate pool before any
+patch-token model is implemented.
+
 ## The file reading order
 
 1. `README.md`: the short command list and repository rules.

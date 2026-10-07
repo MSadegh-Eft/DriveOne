@@ -38,8 +38,10 @@ fixed subset.
 The corrected 500-group-per-split replication confirms the stop: pooled PE
 reaches 0.0476 test mAP and task ID with the same pooled image reaches 0.0576,
 while tracker-score and projected-box-area controls reach 0.1813 and 0.1729 on
-the same candidates. The next work is protocol diagnosis and candidate
-redesign, not a larger model.
+the same candidates. The CPU-only protocol diagnosis is now complete and is
+recorded in [`docs/refav_protocol_diagnosis.md`](docs/refav_protocol_diagnosis.md).
+It reports `PROTOCOL_REPAIR_REQUIRED`: the next work is a label-independent
+candidate-pool repair, not a larger model.
 
 Prepare the pinned public Valeo4Cast validation tracks into the derived pilot
 manifest, then run the dependency-light RefAV feasibility verifier:

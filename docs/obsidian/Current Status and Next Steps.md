@@ -115,15 +115,26 @@ The corrected result hashes are `7bd361d9988cc1fd3db90299d4e5c6b346174265bfcce6f
 (500 groups per split). The earlier v1 hashes remain listed in the config only
 to show which artifacts were superseded.
 
-The next action is protocol diagnosis:
+## Protocol-diagnosis result
 
-1. Inspect per-log and candidate-count strata for the 500-group result.
-2. Check whether label transfer and candidate generation make geometry a
-   target proxy or make visual appearance redundant.
-3. Propose a concrete, label-independent candidate-pool repair, if one exists,
-   and rerun deterministic controls after that repair.
-4. Add patch tokens only if a repaired pooled baseline beats the strongest
-   deterministic control by a preregistered margin.
+The CPU-only diagnosis of the 500-group artifacts is complete. The full report
+is in `docs/refav_protocol_diagnosis.md`; the detailed JSON is outside Git at
+`/ehsan/m.sadegh/driveone_assets/refav/refav_protocol_diagnosis_500.json`.
+
+The selected groups have 100% oracle candidate coverage because the exporter
+deliberately selected rankable groups. This does not describe the full
+manifest. Unknown rows make up 84.4% of train and about 89.8% of validation
+and test. Referred-object visibility is 38.6% versus 16.4% for labeled
+negatives in validation, and 46.9% versus 21.0% in test. The direction changes
+in train, which shows that the shared camera signal is unstable across logs.
+
+Non-oracle deterministic controls remain much stronger than pooled PE on the
+held-out splits, including the score-and-size-matched diagnostic subset. The
+diagnosis decision is **`PROTOCOL_REPAIR_REQUIRED`**.
+
+The next action is to design one label-independent, deterministic, hashable
+candidate-pool repair and rerun the controls on that exact pool. Do not add
+patch tokens, Qwen, temporal frames, trajectories, or distillation yet.
 
 Qwen, temporal input, PE-Spatial, trajectories, distillation, and deployment
 optimization remain deferred.
