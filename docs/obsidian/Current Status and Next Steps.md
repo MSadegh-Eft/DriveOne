@@ -145,6 +145,25 @@ Stop and redesign if candidate construction cannot be independent of relevance
 labels, target coverage is poor, the shared camera removes most targets, or a
 candidate-only shortcut remains competitive after matched hard negatives.
 
+## Official Le3DE2E repair result (2026-10-07)
+
+We rebuilt the pilot from the official RefAV scenario annotations and the
+official Le3DE2E tracker.  The nine-log output is outside Git at
+`/ehsan/m.sadegh/driveone_assets/refav/official/refav_le3de2e_repaired.feather`.
+
+The candidate pool itself is reproducible and label-independent.  However, only
+2,935 of 14,110 prompt/timestamp groups (20.8%) contain a matched referred
+track.  Only 33.2% of matched referred rows project into at least one camera,
+and 90.5% of rows remain unknown after matching.  These numbers fail the
+80% positive-availability and 90% camera-coverage gates.
+
+The official repair assessment is
+`PROTOCOL_REPAIR_REQUIRED`.  A 500-rankable-group control run exists only as a
+conditional diagnostic; it selected groups using transferred labels and is not
+a deployment-like result.  The next decision is to repair the tracker/target
+interface or stop the RefAV branch.  Do not begin patch-token training, Qwen,
+temporal frames, trajectories, or distillation.
+
 ## Commit history
 
 - `4976bff` — initial repository layout.

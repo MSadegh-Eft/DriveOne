@@ -8,10 +8,27 @@ For a complete explanation in simple English, start with the [DriveOne Project G
 
 ## Current next step
 
-The public-tracker pilot manifest now exists outside Git. Before adding a
-DriveOne scorer, reproduce that manifest, inspect its audit, and run the
-control-only ranking study. The pilot has many unmatched tracker rows, so do
-not treat an unmatched row as a negative without an explicit protocol.
+The current gate uses the official RefAV Le3DE2E tracker, not the historical
+Valeo4Cast pilot.  The nine-log repair produced only 20.8% positive group
+availability and 33.2% camera coverage for matched referred rows, so the RefAV
+branch remains at `PROTOCOL_REPAIR_REQUIRED`.  Do not add a scorer or larger
+backbone until this interface is repaired or the branch is stopped.
+
+The repair entry point is:
+
+```bash
+conda run -n refav python scripts/repair_refav_protocol.py \
+  --tracker /ehsan/m.sadegh/driveone_assets/refav/official/Le3DE2E_tracking_predictions_val.pkl \
+  --annotations /ehsan/m.sadegh/driveone_assets/refav/official/scenario_mining_val_annotations.feather \
+  --sensor-root /ehsan/m.sadegh/driveone_assets/refav/av2_sensor_clean/val \
+  --logs <nine-log-ids> \
+  --output /ehsan/m.sadegh/driveone_assets/refav/official/refav_le3de2e_repaired.feather \
+  --summary /ehsan/m.sadegh/driveone_assets/refav/official/refav_le3de2e_repaired_summary.json \
+  --manifest /ehsan/m.sadegh/driveone_assets/refav/official/refav_le3de2e_repaired_manifest.json
+```
+
+The previous Valeo4Cast artifacts and controls remain available as historical
+diagnostics.  They are not the final source for the protocol gate.
 
 The exact reading and experiment order is in [`docs/obsidian/Development Roadmap.md`](docs/obsidian/Development%20Roadmap.md).
 

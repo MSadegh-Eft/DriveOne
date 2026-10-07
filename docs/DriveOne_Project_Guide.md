@@ -1013,3 +1013,27 @@ Can we define valid candidates?
 ```
 
 At the current point, the first three questions have exposed a serious shortcut and the pooled baseline has not passed. That is a useful research result. The next decision should be about the validity of the candidate protocol, not about adding a larger model.
+
+## 15. Official Le3DE2E repair result
+
+The next protocol repair used the official RefAV scenario-mining annotations and
+the official Le3DE2E validation tracker.  The repair code is in
+`src/driveone/data/refav_repair.py` and
+`scripts/repair_refav_protocol.py`.  Candidate construction happens before
+matching, uses a fixed semantic taxonomy map, keeps unknown rows, and projects
+each candidate into all seven ring cameras.
+
+The nine-log output is stored outside Git at
+`/ehsan/m.sadegh/driveone_assets/refav/official/refav_le3de2e_repaired.feather`.
+It contains 333,255 unique candidate rows and 14,110 prompt/timestamp groups.
+Only 2,935 groups (20.8%) have a matched referred track.  Only 33.2% of
+matched referred rows project into at least one camera, and 90.5% of the
+prompt-labelled rows remain unknown.  Positive availability is 18.9%, 20.8%,
+and 21.8% at 1 m, 2 m, and 4 m matching thresholds.  The machine-readable assessment is
+`/ehsan/m.sadegh/driveone_assets/refav/official/refav_le3de2e_assessment.json`.
+
+The decision remains **`PROTOCOL_REPAIR_REQUIRED`**.  This is a data-interface
+stop, not a model result.  Do not add patch tokens, temporal frames, Qwen,
+trajectories, or distillation until a candidate pool with adequate referred
+coverage and camera coverage exists.  If a label-independent repair cannot
+achieve that coverage, stop the RefAV branch and record the negative finding.
