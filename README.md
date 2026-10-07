@@ -4,6 +4,8 @@ A standalone research repository for the DriveOne bounded-candidate autonomous-d
 
 The first milestone is deliberately narrow: establish a reproducible, non-distilled RefAV referred-track ranking diagnostic with frozen PE-Core-L14-336 features. Distillation, PE-Spatial, temporal frames, trajectory ranking, and deployment optimization come later, only after the data contract, candidate leakage controls, and frozen-feature smoke tests pass.
 
+For a complete explanation in simple English, start with the [DriveOne Project Guide](docs/DriveOne_Project_Guide.md). A locally generated PDF copy is available at `reports/DriveOne_Project_Guide.pdf`; the PDF is ignored by Git so it is not uploaded with the source repository.
+
 ## Current next step
 
 The public-tracker pilot manifest now exists outside Git. Before adding a
