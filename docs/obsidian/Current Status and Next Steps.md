@@ -201,6 +201,6 @@ negative diagnostic unless an independent detector/tracker source is found.
 Do not add patch tokens, temporal frames, Qwen, distillation, trajectories, or
 deployment optimization on this branch.
 
-See [[../../refav_candidate_pool_decision|RefAV candidate-pool decision]] and
+See [RefAV candidate-pool decision](../refav_candidate_pool_decision.md) and
 the external report at
 `/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v3/candidate_source_audit.json`.
