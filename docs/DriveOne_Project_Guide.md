@@ -66,20 +66,23 @@ We call this task **RefAV referred-track ranking**. It is a custom diagnostic. I
 
 ### Current answer
 
-The data pipeline and PE interface work. However, simple tracker and geometry controls are much stronger than the first corrected pooled-PE baseline.
+The original 500-group baseline was blocked by metadata shortcuts, but the
+follow-up **evaluation-correctness gate** has now corrected that diagnosis.
+The corrected audit keeps unknown labels explicit, distinguishes global
+assignment ambiguity from local nearby matches, excludes synthetic ego rows
+from external controls, and confirms that the candidate pool itself did not
+change.
 
-On the corrected 500-group-per-split run:
+The corrected causal Le3DE2E pool provides 99.0% external referred-track
+availability at the 2 m threshold. Its 1 m, 2 m, and 4 m availability is
+98.3%, 99.0%, and 99.1%, a 1.07-point range. The data gate therefore passes.
+This does not mean the model has passed: the pooled-PE and task-ID models still
+need to be rerun on the corrected external groups.
 
-| method | test mAP |
-| --- | ---: |
-| pooled PE image + question text | 0.0476 |
-| task ID + the same pooled image | 0.0576 |
-| tracker-score ranking | 0.1813 |
-| projected-box-area ranking | 0.1729 |
-
-This is an early stop for the current model path. It does not prove that visual or language features can never help. It says that the present candidate/label setup contains a strong shortcut, and the pooled model has not shown value beyond it.
-
-The next step is to diagnose and, only if possible, repair the candidate protocol. Patch-token fusion is deliberately paused.
+The current decision is **`POOLED_BASELINE_GATE_READY`**. The next step is one
+reproducible frozen pooled-PE baseline seed, followed by a second seed only if
+the first result is stable. Patch tokens remain paused until that model gate
+passes.
 
 ## 2. Why we are moving slowly
 
@@ -484,9 +487,8 @@ The order separates four questions that are often mixed together:
 4. **System value:** is the complete pipeline accurate, calibrated, and fast?
 
 At the current point, data preparation, PE access, deterministic controls, and
-the corrected pooled baselines are complete. The result has not passed the
-shortcut/frozen-baseline gate, so patch tokens and all later stages remain
-paused.
+the evaluator-correctness gate are complete. The corrected pooled baseline
+model gate is the next step; patch tokens and all later stages remain paused.
 
 ## 6. The current data pipeline
 
@@ -708,13 +710,12 @@ Those costs are measured later in the efficiency track.
 
 ### 6.13 Where the pipeline currently stops
 
-The present pipeline ends after deterministic controls and corrected frozen-PE
-baselines. It has not yet implemented the patch-token fusion model. That pause
-is deliberate: projected box area and tracker-related controls are stronger
-than the current pooled model on the tested subset. Before adding a new model,
-we need to determine whether that gap comes from label transfer, tracker
-quality, shared-camera visibility, candidate geometry, or a real lack of useful
-image-language signal.
+The present pipeline ends after deterministic controls and the corrected
+candidate-source audit. The next run is a frozen pooled-PE baseline on the
+causal all-tracker pool. The patch-token fusion model is still deferred. That
+pause is deliberate: the old pooled result used a different historical subset,
+and we need a matched result under the corrected evaluator before comparing
+representations.
 
 This is why the pipeline is more than file conversion. It is the experiment’s
 measurement instrument. If its candidate groups or labels are invalid, a larger
@@ -840,7 +841,8 @@ column-selection and filtering so the 17-million-row annotation file can be
 read without materializing the whole file as Python dictionaries. It also
 replays the official conversion functions from the pinned RefAV repository and
 records the source code hash. Its output is the external JSON report whose
-decision is `REFAV_ORACLE_ONLY`.
+decision is `POOLED_BASELINE_GATE_READY`; the learned-model gate is recorded
+separately as pending.
 
 ### Tests
 
@@ -853,7 +855,7 @@ The `tests/` directory uses Python `unittest`.
 - `test_verify_script.py` checks the dependency-light verifier behavior.
 - `test_refav_baselines.py` checks feature shape, unknown-row ranking, and that task ID and pooled PE accept the same image input.
 
-The current suite has **31 passing tests** in the `refav` environment. Tests use
+The current suite has **35 passing tests** in the `refav` environment. Tests use
 small synthetic records; they check code behavior and contract logic, not model
 quality or dataset validity.
 
@@ -974,7 +976,8 @@ signal, and it does not measure end-to-end latency.
 The CPU-only diagnosis of the old 500-group artifacts found many unknown rows,
 split-dependent visibility differences, and strong tracker/geometry controls.
 It produced `PROTOCOL_REPAIR_REQUIRED`. That decision stopped patch-token
-training and triggered the source audit described below.
+training and led to the evaluator-correctness gate. The old result remains a
+historical warning; it is not silently mixed with the corrected source audit.
 
 ### 9.7 Official-source replay and camera completion — code/infrastructure and measurement
 
@@ -987,86 +990,88 @@ fixed seven-camera order.
 The earlier local copy had only front-center images for most logs. To make the
 camera-coverage conclusion testable, we downloaded only the nearest image to
 each of the 32 native tracker timestamps for each of the seven ring cameras and
-nine logs:
+nine logs: 1,536 JPEG files, about 0.55 GB, with a maximum timestamp difference
+of 32.7 ms. No full Argoverse sensor download was performed.
 
-- 1,536 JPEG files;
-- approximately 0.55 GB;
-- maximum timestamp difference 32.7 ms;
-- no full 1 TB Argoverse sensor download;
-- per-file paths, sizes, and timestamp differences in
-  `camera_download_manifest_20261008.json`.
+### 9.8 Evaluation-correctness correction — measurement
 
-All seven cameras were present at the selected timestamps. This fixes the
-earlier missing-camera measurement. It does not mean that every camera frame in
-the full log was downloaded.
+The first v3 evaluator marked a match ambiguous whenever either endpoint had
+more than one valid geometric edge. That was too strict: a global one-to-one
+assignment can be unique even when a candidate has several local alternatives.
+The v4 evaluator now records both facts:
 
-### 9.8 Candidate-source comparison — measurement
+- `multiple_valid_edges`: a local crowded-scene diagnostic;
+- `AMBIGUOUS_MATCH`: only an equal-cardinality, equal-cost global alternative.
 
-The final audit created four comparable source views: official replay, causal
-all-tracker pool, historical pool, and a ground-truth oracle (plus the source
-comparison bookkeeping). It evaluated 2,880 prompt/timestamp groups. The
-external-object denominator is the set of groups where an external referred
-ground-truth object is actually present and eligible under the fixed range and
-ROI rules; this is different from the frequency of the event over all
-timestamps.
+The v4 report found no equal-cost global assignment ties. It did find many
+local alternatives: 3,964 causal assignments and 3,528 official-replay
+assignments at 2 m. Those numbers justify inspecting crowded examples, but they
+do not justify NMS by themselves.
 
-| source | external referred availability | positive projects into a camera | unknown candidate fraction |
+Unknown rows now retain `label=None` and their status. The controls report two
+metric bounds. The operational bound keeps unknown rows in the ranking order;
+the labeled-only bound excludes unknown rows from the metric denominator. This
+makes it possible to see both deployment-style difficulty and label-supported
+ranking quality.
+
+Synthetic `EGO_VEHICLE` rows remain in the candidate pool and its hash, but are
+excluded from external-object controls. Ego scenarios are reported separately.
+The learned model gate is also separate: second-seed pooled PE is `PENDING`,
+not a failed data check.
+
+### 9.9 Corrected candidate-source results — measurement
+
+The v4 audit evaluates 2,880 prompt/timestamp groups. External availability is
+conditional on an eligible external referred ground-truth object; it is not the
+fraction of all timestamps containing a scenario event.
+
+| source | external availability at 2 m | positive projects into a camera | unknown candidate fraction |
 | --- | ---: | ---: | ---: |
-| official Le3DE2E replay | 68.6% at 2 m | 100.0% | 80.0% |
-| causal Le3DE2E pool | 66.9% at 2 m | 100.0% | 92.3% |
-| historical pool | 66.8% at 2 m | 100.0% | 92.3% |
+| causal Le3DE2E pool | 99.0% | 100.0% | 88.7% |
+| official replay | 97.0% | 100.0% | 74.1% |
+| historical pool | 99.0% | 100.0% | 88.7% |
 | ground-truth oracle | 100.0% | 100.0% | 0.0% |
 
-For the official replay, conservative unique matching gives 71.7% availability
-at 1 m, 68.6% at 2 m, and 59.2% at 4 m. This 20.8-point change is above the
-10-point stability requirement. If ambiguous nearby assignments are counted as
-successful, availability is about 96.4%, 97.0%, and 97.3%; those optimistic
-values cannot be the main result because they do not establish a unique target
-identity.
+For the causal pool, availability is 98.3%, 99.0%, and 99.1% at 1 m, 2 m,
+and 4 m. The maximum change is 1.07 percentage points. The official replay is
+96.4%, 97.0%, and 97.3%, a 0.87-point range. The official replay still uses a
+whole-log score filter and is therefore a comparison source, not the causal
+online pool for the next model run.
 
-The ground-truth oracle is a diagnostic upper bound. It proves that the
-annotations, pose conversion, calibration, and camera projection can support
- the task. It is not a deployable candidate generator because it uses the
-ground-truth object list.
+The causal pool has 603,230 unmatched rows out of 680,040 (88.7%). This does
+not mean that 88.7% of referred objects are missing. It means that many tracker
+rows have no matching annotation. Candidate-list size and unknown-row placement
+still matter for ranking, so the model evaluation must retain them.
 
-### 9.9 Deterministic controls in the final audit — measurement
+### 9.10 Corrected external controls — measurement
 
-On the official replay control pool, the reported diagnostics were:
+External controls exclude synthetic ego rows and use the same candidate rows
+for every rule. For the causal pool:
 
-| control | mAP | Recall@1 |
-| --- | ---: | ---: |
-| tracker confidence | 0.533 | 0.469 |
-| candidate distance | 0.446 | 0.469 |
-| projected box area | 0.144 | 0.124 |
-| category frequency | 0.152 | 0.088 |
-| random | 0.061 | 0.019 |
+| control | operational mAP | labeled-only mAP | operational Recall@1 | labeled-only Recall@1 |
+| --- | ---: | ---: | ---: | ---: |
+| tracker confidence | 0.264 | 0.274 | 0.166 | 0.169 |
+| projected box area | 0.143 | 0.289 | 0.110 | 0.164 |
+| candidate distance | 0.078 | 0.242 | 0.056 | 0.123 |
+| category frequency | 0.027 | 0.226 | 0.006 | 0.129 |
+| random | 0.035 | 0.222 | 0.010 | 0.114 |
 
-These are source diagnostics, not DriveOne model scores. The control summary
-contains 693 rankable groups, including the separate ego-vehicle scenario
-rows. For the external-object conclusion, coverage and matching statistics are
-reported separately. The controls are still useful because they show that the
-available tracker and geometry fields can rank labels far better than random.
+The controls are clearly stronger than random, but none is near-perfect after
+correction. The strongest control varies by log and by metric bound. The audit
+also writes per-log, split, candidate-count, and prompt-holdout results, so the
+next model report must not use only one pooled headline number.
 
-Unmatched tracker rows remain `UNMATCHED_TRACK`. For the binary ranking
-diagnostic only, they are treated as explicit tracker false positives so that a
-real candidate list can be scored. They are not rewritten as RefAV
-`OTHER_OBJECT`. This convention is a lower-bound/operational diagnostic, not
-proof that every unmatched row is semantically an `OTHER_OBJECT`.
+### 9.11 Current data decision — interpretation
 
-### 9.10 Current decision — interpretation
+The evaluator-correctness gate passes. Candidate membership is hash-stable and
+label-independent; camera projection is complete for the selected assets;
+external availability exceeds 80%; matching sensitivity is stable within 10
+percentage points; unknown statuses are explicit; ego rows no longer inflate
+external controls.
 
-The source audit ends with **`REFAV_ORACLE_ONLY`**. The available tracker pool
-does not currently provide a clean enough, uniquely associated, label-independent
-candidate interface for the central language-conditioned ranker claim. The
-oracle view is usable for geometry and implementation checks, but it must not
-be presented as a deployment-like benchmark.
-
-This conclusion is narrower than “RefAV is useless.” It means the present
-tracker/source conversion has not passed the candidate-validity gate. A future
-repair must either resolve the ambiguous association in a label-independent
-way or use a genuinely independent detector/tracker source. If neither exists,
-the RefAV branch should be documented as a negative finding and the project
-should pivot to a task with a fairer candidate interface.
+The machine-readable decision is **`POOLED_BASELINE_GATE_READY`**. This is a
+data decision. It authorizes the frozen pooled-PE baseline only; it does not
+claim that PE or language improves ranking.
 
 ## 10. What the current evidence means
 
@@ -1075,18 +1080,18 @@ should pivot to a task with a fairer candidate interface.
 - The repository can load and audit the relevant RefAV/Argoverse artifacts.
 - The official PE checkpoint exposes usable pooled and patch-token features.
 - A reproducible candidate table and log-disjoint split plan can be built.
-- The old pilot contains strong tracker, distance, and geometry shortcuts.
-- The corrected pooled-PE baseline did not beat the historical controls.
-- The official replay has complete camera availability at the selected native
-  timestamps after the small camera download.
-- The ground-truth oracle can be projected successfully, so camera geometry is
-  not the current limiting factor.
-- The official tracker replay has incomplete conservative unique association
-  and a large unknown-row fraction.
+- The evaluator can preserve unknown rows and report operational and
+  labeled-only ranking bounds.
+- The corrected causal pool has about 99% external referred availability at
+  the 2 m threshold.
+- The selected camera assets provide complete geometric projection coverage.
+- Candidate hashes are unchanged by the evaluator correction.
+- Simple tracker and geometry controls remain required baselines.
 
 ### Statements that remain unproven
 
 - Natural language improves generalization over task ID.
+- Pooled PE beats the strongest matched control on the corrected groups.
 - Patch tokens improve ranking over pooled PE.
 - One shared scorer works across answers, entities, and trajectories.
 - The formulation survives candidate-count, scene, city, planner, or dataset
@@ -1096,39 +1101,39 @@ should pivot to a task with a fairer candidate interface.
 - Any offline ranker is safe, grounded in the deployment sense, a planner, or
   real time.
 
-### Why the current decision is a data decision, not a model decision
+### Why the next experiment is still small
 
-The official source audit did not compare patch tokens against pooled PE. It
-asked an earlier question: can the task provide a fair, complete candidate list
-with a well-defined target? The answer is currently “only with the oracle, and
-not yet with the available tracker.” Training a larger model now would mix
-candidate recall, ambiguous matching, tracker confidence, and visual reasoning
-into one number. That number would not tell us which part worked.
+The data gate now passes, but the old learned result used different historical
+rows and cannot be used as the corrected model result. We must rerun candidate-
+only, metadata-only, task-ID, and pooled-PE controls on the same corrected
+external rows. This is cheaper and more informative than adding patch tokens.
 
 ## 11. The next step after this document
 
-The next action is a small, evidence-first source/association gate:
+Run the **frozen pooled-baseline gate** on the causal all-tracker pool:
 
-1. Inspect the ambiguous official Le3DE2E matches per log and timestamp.
-2. Determine whether the ambiguity can be removed using only candidate-source
-   information available before labels: deterministic per-frame NMS,
-   track-consistency rules, class compatibility, and a fixed tie policy.
-3. Rebuild the candidate pool with that rule, without looking at RefAV mining
-   labels or ground-truth matching success.
-4. Recompute pool hashes, positive availability, unknown rates, projection
-   coverage, and tracker/distance/size controls.
-5. If no label-independent rule gives a stable, non-dominated pool, search for
-   an independent detector/tracker artifact. If that also fails, stop RefAV and
-   pivot.
+1. Use the v4 candidate rows and keep the candidate hash unchanged.
+2. Exclude synthetic ego rows from the external-object model evaluation.
+3. Train candidate-only, metadata-only, task-ID, and pooled-PE controls with
+   identical rows, optimizer budget, precision, and hardware.
+4. Leave unknown candidates out of the BCE training loss, but retain them in
+   ranking order during evaluation. Report operational and labeled-only bounds.
+5. Run one seed first. If it reproduces, run a second seed and compute
+   confidence intervals.
+6. Report mAP, Recall@1, per-log, split, candidate-count, hard-negative,
+   calibration, and end-to-end timing results.
 
-Only after this gate can we rerun the pooled model with a second seed and
-confidence intervals. Only if that result beats the strongest matched control
-by at least +5 Recall@1 points or +0.03 mAP, with no material calibration
-regression, should patch-token modeling begin.
+Proceed to patch-token fusion only if pooled PE beats the strongest matched
+baseline by at least +5 Recall@1 points or +0.03 mAP, with two-seed confidence
+intervals excluding zero and no material calibration regression.
 
-Do not start Qwen, distillation, PE-Spatial, four-frame input, six-camera
-scaling, DriveLM conversion, NAVSIM/GTRS trajectories, Waymo ranking, or
-deployment optimization before the candidate interface passes.
+Do not apply NMS merely because local matching alternatives exist. If crowded
+examples suggest duplicate proposals, test a fixed label-independent NMS or
+track-consistency variant as a separate hashed candidate-pool variant before
+using it for a model comparison.
+
+Do not start Qwen, distillation, PE-Spatial, temporal frames, trajectories, or
+deployment optimization before this pooled gate passes.
 
 ## 12. Reproduction commands
 
@@ -1223,12 +1228,12 @@ Can we define valid candidates?
     -> Only then: distill and expand.
 ```
 
-At the current point, the first three questions have exposed a serious shortcut and the pooled baseline has not passed. That is a useful research result. The next decision should be about the validity of the candidate protocol, not about adding a larger model.
+At the current point, the evaluator-correctness gate has passed, while the corrected pooled model gate is still pending. The next decision is whether pooled image/question conditioning adds value over matched controls, not whether to add a larger model.
 
 ## 15. The final audit in technical detail
 
 This section gives the details needed to reproduce or challenge the current
-stop decision. The code and JSON report are the primary record; the prose here
+data/model gate decision. The code and JSON report are the primary record; the prose here
 explains how to read them.
 
 ### 15.1 Pinned inputs
@@ -1271,28 +1276,26 @@ The pool hash uses sorted `(log_id, timestamp_ns, track_id)` keys plus declared
 candidate geometry fields. Prompts and target labels are not used to decide
 membership. The audit also checks duplicate keys and log-split overlap.
 
-### 15.3 Why matching is the weak point
+### 15.3 Why matching is now separated into two measurements
 
 The tracker and the annotation describe the same scene in different ways. A
 tracker can create several nearby boxes for one annotated object, or miss an
-annotated object. A distance threshold alone cannot tell whether two nearby
-tracker rows are two objects or two hypotheses for one object. The audit
-therefore reports two views:
+annotated object. The v4 evaluator therefore separates:
 
-- **conservative unique matching:** an object counts only when the assignment
-  is sufficiently unambiguous;
-- **optimistic matching:** an ambiguous nearby candidate is allowed to count.
+- **local alternatives:** more than one candidate-to-ground-truth edge is under
+  the distance and class threshold;
+- **global ambiguity:** removing the chosen edge leaves another assignment with
+  the same maximum number of matches and effectively the same total distance;
+- **unmatched:** no valid assignment is made for that tracker row.
 
-The optimistic view answers “is there probably some tracker row near the
-object?” The conservative view answers the harder ranking question “which exact
-candidate should receive the positive label?” The central benchmark needs the
-second answer. This is why the high optimistic availability does not repair the
-protocol by itself.
+The causal pool has many local alternatives but no equal-cost global assignment
+ties in the report. Its group availability is 98.3%, 99.0%, and 99.1% at 1 m,
+2 m, and 4 m. The range is 1.07 percentage points. This supports running the
+pooled baseline while keeping crowded-scene diagnostics visible.
 
-At the official 2 m threshold, conservative external availability is 68.6%.
-At 1 m it is 71.7%, and at 4 m it is 59.2%. The 20.8-point range means the
-association result is sensitive to a reasonable threshold change. A future
-repair must fix this identity problem without using the target labels.
+A future NMS or track-consistency rule must be label-independent, deterministic,
+and separately hashed. Nearby objects alone are not enough evidence to delete
+one of them.
 
 ### 15.4 Why the camera result changed
 
@@ -1310,33 +1313,30 @@ clarity and occlusion still require separate measurement.
 ### 15.5 How to read the control scores
 
 Tracker confidence, distance, projected area, and category frequency are
-metadata/geometry rules. They are intentionally simple. Their role is to show
-whether the target label can be predicted without using image-language content.
+metadata/geometry rules. Their role is to show whether the target label can be
+predicted without image-language content. The corrected causal results are
+tracker mAP 0.264 operational / 0.274 labeled-only, projected-area mAP 0.143 /
+0.289, distance mAP 0.078 / 0.242, and random mAP 0.035 / 0.222.
 
-The official replay control report gives tracker confidence mAP 0.533 and
-candidate-distance mAP 0.446, compared with random mAP 0.061. The control
-summary includes 693 rankable groups and the official conversion's injected ego
-row. It is therefore a protocol diagnostic, not a final external-object model
-benchmark and not a direct replacement for the old 500-group test numbers.
+The operational bound keeps unknown rows in the ranking order. The labeled-only
+bound excludes unknown rows from the metric denominator. Neither bound is a
+safety result. Both must be reported for the next learned comparison.
 
-Score-matched and size-matched subsets are also diagnostics. Because the
-matching criteria use target-associated rows to create a balanced comparison,
-those subsets must never be called deployment-like candidate pools. They answer
-whether a shortcut remains after a controlled post-hoc comparison.
+Score-matched and size-matched subsets remain evaluation diagnostics. Their
+construction uses target-associated rows, so they must not be called
+deployment-like candidate pools.
 
-### 15.6 Unknown labels and calibration
+### 15.6 Unknown labels and ego scenarios
 
 An unmatched tracker row is not the same thing as a human-labelled
-`OTHER_OBJECT`. The manifest keeps that distinction. For a ranking diagnostic,
-unknown rows are treated as non-referred tracker false positives so that a
-candidate list can be ordered. This is an operational convention, not a claim
-about semantic truth.
+`OTHER_OBJECT`. The manifest keeps that distinction. Synthetic ego rows remain
+in the pool for hash and scenario accounting, but are excluded from external
+controls. Ego scenarios are reported separately rather than treated as
+camera-renderable external objects.
 
-The final source audit therefore does not claim calibrated probabilities. The
-old learned pilot measured calibration on its labeled subset, but the repaired
-source has not yet had a valid learned run with a settled treatment of unknown
-and ambiguous rows. NLL, Brier, ECE, abstention, and reliability diagrams must
-be rerun only after the candidate/label contract is repaired.
+The v4 source audit does not claim calibrated probabilities. NLL, Brier, ECE,
+abstention, and reliability diagrams belong to the upcoming corrected learned
+baseline, after the label policy is fixed for that run.
 
 ## 16. What is in the repository and what is outside it
 
@@ -1356,7 +1356,7 @@ be rerun only after the candidate/label contract is repaired.
 - `scripts/audit_refav_candidate_sources.py`: final source audit command.
 - `scripts/verify_refav.py`, `scripts/run_refav_controls.py`,
   `scripts/train_refav_baselines.py`, and the PE scripts.
-- `tests/`: 31 small contract, matching, metric, split, verifier, and baseline
+- `tests/`: 35 small contract, matching, metric, split, verifier, and baseline
   tests.
 - `docs/`: data contract, baseline record, protocol diagnosis, candidate-source
   decision, and this guide.
@@ -1369,14 +1369,14 @@ machine-readable audit reports are under
 `/ehsan/m.sadegh/driveone_assets/refav`. This keeps Git reviewable and prevents
 accidental commits of multi-gigabyte data or model weights.
 
-The final source-audit directory is:
+The corrected evaluator-audit directory is:
 
 ```text
-/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v3
+/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v6
 ```
 
 Its JSON report SHA-256 is
-`0ad1d654d85c0e66cd82311cbcab7ebc75256db31e1e64d79b76e9273ecd69e0`. The
+`52aff5c738bd674969c302f0fde3572b2e21e134a99e843b1182f7290157e9e7`. The
 manifest, per-log coverage table, prompt-holdout plan, source-comparison table,
 controls, and candidate Feather files are in the same directory.
 
@@ -1385,7 +1385,7 @@ controls, and candidate Feather files are in the same directory.
 The following items are deliberately **not** complete:
 
 - no patch-token DriveOne fusion model;
-- no second-seed learned result on the repaired official pool;
+- no second-seed learned result on the corrected causal pool;
 - no valid Qwen direct baseline or distillation teacher;
 - no PE-Spatial or four-frame temporal experiment;
 - no six-camera learned model;
@@ -1396,15 +1396,14 @@ The following items are deliberately **not** complete:
 - no safety claim;
 - no publication claim based on the current data audit.
 
-The absence of these experiments is intentional. They would be downstream of a
-candidate-interface decision that has not yet passed.
+The absence of these experiments is intentional. They are downstream of the corrected pooled-baseline gate, which has not yet run.
 
 ## 18. Decision record and reading order
 
 The current decision is:
 
 ```text
-REFAV_ORACLE_ONLY
+POOLED_BASELINE_GATE_READY
 ```
 
 Read the project in this order if you want to understand it without jumping
@@ -1423,7 +1422,6 @@ between files:
    `scripts/audit_refav_candidate_sources.py`, when you want to inspect the
    latest implementation.
 
-The next implementation should either produce a label-independent repaired
-pool or demonstrate that this is not possible with the available RefAV source.
-Until one of those outcomes is established, the correct action is to preserve
-this negative/diagnostic finding and avoid spending compute on a larger model.
+The next implementation should run the corrected frozen pooled-PE baseline. If
+that model gate passes, patch-token fusion becomes the next controlled comparison.
+If it fails, preserve the negative finding and do not expand the architecture.

@@ -8,11 +8,16 @@ For a complete explanation in simple English, start with the [DriveOne Project G
 
 ## Current next step
 
-The current gate uses the official RefAV Le3DE2E tracker, not the historical
-Valeo4Cast pilot.  The nine-log repair produced only 20.8% positive group
-availability and 33.2% camera coverage for matched referred rows, so the RefAV
-branch remains at `PROTOCOL_REPAIR_REQUIRED`.  Do not add a scorer or larger
-backbone until this interface is repaired or the branch is stopped.
+The evaluation-correctness gate now passes on the existing nine-log candidate
+pool. It separates global assignment certainty from local nearby matches,
+preserves unknown labels, excludes synthetic ego rows from external controls,
+and keeps the learned-model gate separate. The current decision is
+`POOLED_BASELINE_GATE_READY`.
+
+The next experiment is the frozen pooled-PE baseline gate using the causal
+all-tracker pool. Run one seed first, then a second seed only after the first
+run is reproducible. Do not add patch tokens, Qwen, temporal frames,
+trajectories, or distillation yet.
 
 The repair entry point is:
 
@@ -32,14 +37,12 @@ diagnostics.  They are not the final source for the protocol gate.
 
 The exact reading and experiment order is in [`docs/obsidian/Development Roadmap.md`](docs/obsidian/Development%20Roadmap.md).
 
-The official Le3DE2E candidate-source audit is complete. It reproduces the
-official RefAV tracker conversion and uses all seven camera views at the
-native tracker timestamps. The official replay provides 68.6% conservative
-external referred-object availability, while the ground-truth oracle provides
-100%. Tracker confidence and candidate distance remain strong controls. The
-decision is `REFAV_ORACLE_ONLY`: the annotations and cameras are usable for an
-oracle-candidate diagnostic, but the available tracker is not a fair
-deployment-like candidate source. See
+The corrected official Le3DE2E candidate-source audit reproduces the official
+conversion and uses all seven camera views at the native tracker timestamps.
+The causal pool provides 99.0% external referred-object availability at 2 m;
+the ground-truth oracle provides 100%. Tracker confidence remains a required
+control, but no external deterministic control is near-perfect after ego rows
+are excluded. See
 [`docs/refav_candidate_pool_decision.md`](docs/refav_candidate_pool_decision.md).
 
 The six-log deterministic control run is available outside Git:
@@ -62,13 +65,14 @@ not yet beat the strongest deterministic controls, so patch-token modeling is
 paused while the baseline and shortcut protocol are replicated on a larger
 fixed subset.
 
-The corrected 500-group-per-split replication confirms the stop: pooled PE
+The corrected 500-group-per-split replication is retained as historical
+evidence: pooled PE
 reaches 0.0476 test mAP and task ID with the same pooled image reaches 0.0576,
 while tracker-score and projected-box-area controls reach 0.1813 and 0.1729 on
 the same candidates. The CPU-only protocol diagnosis is now complete and is
 recorded in [`docs/refav_protocol_diagnosis.md`](docs/refav_protocol_diagnosis.md).
-It reports `PROTOCOL_REPAIR_REQUIRED`: the next work is a label-independent
-candidate-pool repair, not a larger model.
+The new evaluator-correctness report supersedes that data stop; the next work is
+the corrected pooled baseline, not a larger model.
 
 Prepare the pinned public Valeo4Cast validation tracks into the derived pilot
 manifest, then run the dependency-light RefAV feasibility verifier:

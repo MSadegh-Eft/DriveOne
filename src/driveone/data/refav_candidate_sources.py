@@ -18,8 +18,30 @@ import numpy as np
 from .refav_repair import taxonomy_group
 from .refav_tracker import RING_CAMERAS
 
-AUDIT_VERSION = "refav-candidate-sources-v1"
+AUDIT_VERSION = "refav-candidate-sources-v2"
 THRESHOLDS_M = (1.0, 2.0, 4.0)
+
+
+def matching_range(values: Sequence[float]) -> float:
+    """Return the max-minus-min range in a threshold sensitivity table."""
+    if not values:
+        raise ValueError("At least one matching value is required")
+    return float(max(values) - min(values))
+
+
+def partition_external_control_rows(rows: Iterable[Mapping[str, Any]]) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+    """Separate synthetic ego rows from external-object control rows.
+
+    This does not change candidate-pool membership. It only prevents the ego
+    vehicle's score=1/distance=0 row from entering external-object controls.
+    """
+    external, ego = [], []
+    for row in rows:
+        if row.get("synthetic_ego") or row.get("name") == "EGO_VEHICLE":
+            ego.append(row)
+        else:
+            external.append(row)
+    return external, ego
 
 
 def pool_hash(rows: Iterable[Mapping[str, Any]]) -> str:
@@ -130,9 +152,37 @@ def associate(
     costs = np.full((len(candidates), len(gt) + len(candidates)), penalty)
     costs[:, :len(gt)] = np.where(valid, distances, penalty * 3)
     rows, columns = linear_sum_assignment(costs)
-    return {int(i): {"gt_index": int(j), "distance_m": float(distances[i, j]),
-                     "ambiguous": bool(valid[i].sum() > 1 or valid[:, j].sum() > 1)}
-            for i, j in zip(rows, columns) if j < len(gt) and valid[i, j]}
+    assignments = {
+        int(i): {"gt_index": int(j), "distance_m": float(distances[i, j]),
+                 "ambiguous": False,
+                 "valid_edge_count": int(valid[i].sum()),
+                 "multiple_valid_edges": bool(valid[i].sum() > 1)}
+        for i, j in zip(rows, columns) if j < len(gt) and valid[i, j]
+    }
+
+    # A local candidate can have several valid geometric edges even when the
+    # global one-to-one minimum-cost assignment is unique.  Only mark an
+    # assignment ambiguous when removing its edge leaves another assignment
+    # with the same maximum cardinality and effectively the same cost.
+    base_cardinality = len(assignments)
+    base_cost = sum(item["distance_m"] for item in assignments.values())
+    tolerance = 1e-9
+    for candidate_index, item in assignments.items():
+        alternate_valid = valid.copy()
+        alternate_valid[candidate_index, item["gt_index"]] = False
+        alternate_costs = np.full((len(candidates), len(gt) + len(candidates)), penalty)
+        alternate_costs[:, :len(gt)] = np.where(alternate_valid, distances, penalty * 3)
+        alt_rows, alt_columns = linear_sum_assignment(alternate_costs)
+        alt_assignments = [
+            (i, j) for i, j in zip(alt_rows, alt_columns)
+            if j < len(gt) and alternate_valid[i, j]
+        ]
+        alt_cardinality = len(alt_assignments)
+        alt_cost = sum(float(distances[i, j]) for i, j in alt_assignments)
+        item["ambiguous"] = bool(
+            alt_cardinality == base_cardinality and alt_cost <= base_cost + tolerance
+        )
+    return assignments
 
 
 def box_corners(rows: Sequence[Mapping[str, Any]]) -> np.ndarray:
@@ -241,15 +291,17 @@ def coverage(groups: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def choose_decision(*, infrastructure_complete: bool, deployable_pass: bool, oracle_pass: bool | None,
-                    shortcut_dominated: bool = False) -> tuple[str, str]:
-    """Incomplete downloads never establish that the dataset itself failed."""
-    if deployable_pass and not shortcut_dominated and infrastructure_complete:
-        return "OFFICIAL_PROTOCOL_REPAIRED", "Candidate, coverage, camera and control gates pass; model gate remains separate."
+def choose_decision(*, infrastructure_complete: bool, data_gate_pass: bool, oracle_pass: bool | None,
+                    shortcut_dominated: bool = False, association_uncertain: bool = False) -> tuple[str, str]:
+    """Choose a data decision without pretending that the model gate ran."""
     if not infrastructure_complete:
         return "ALTERNATE_CANDIDATE_SOURCE_REQUIRED", "Audit is incomplete: missing camera assets prevent the oracle/visual gate; do not stop RefAV on this evidence."
+    if data_gate_pass and not shortcut_dominated:
+        return "POOLED_BASELINE_GATE_READY", "Data and association gates pass; the pooled learned-model gate is still pending."
+    if association_uncertain:
+        return "ASSOCIATION_REVIEW_REQUIRED", "Candidate reachability is measurable, but identity certainty or matching stability still needs a label-independent review."
     if shortcut_dominated or oracle_pass is False:
-        return "REFAV_BRANCH_STOPPED", "Complete-input oracle/shortcut gate fails."
+        return "REFAV_BRANCH_STOPPED", "Complete-input candidate-source or shortcut gate fails."
     if oracle_pass:
         return "REFAV_ORACLE_ONLY", "Oracle pool passes but no evaluated independent causal source passes."
     return "ALTERNATE_CANDIDATE_SOURCE_REQUIRED", "A valid independent source or evaluable target interface is still required."

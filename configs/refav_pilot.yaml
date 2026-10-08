@@ -159,25 +159,29 @@ protocol_repair:
   camera_names: [ring_front_center, ring_front_left, ring_front_right, ring_rear_left, ring_rear_right, ring_side_left, ring_side_right]
   best_camera_selection: false
   proceed_to_model_training: false
+  status: superseded_by_evaluation_correctness_gate
 
 candidate_source_audit:
-  audit_version: refav-candidate-sources-v1
+  audit_version: refav-candidate-sources-v2
   official_refav_commit: "5c5be6439ce59b61a31d56431a79a8a04bba33fa"
   selected_logs: "same nine logs as refav_repeated_prompt_log_plan.json"
   timestamp_grid: "exact native Le3DE2E timestamps intersected with annotation, pose, and camera assets"
-  sources: [official_replay, le3de2e_causal, valeo_historical, gt_oracle]
+  sources: [official_replay, le3de2e_causal, custom_historical, valeo_historical, gt_oracle]
   external_object_track_only: true
   ego_vehicle_prompts: "reported separately as scenario-level; excluded from external-box coverage"
   official_replay_score_filter: "whole-log filter replayed for comparison; not causal online generation"
   unmatched_status: UNMATCHED_TRACK
   unmatched_ranking_policy: "explicit non-referred tracker false positive for ranking diagnostics; never relabeled OTHER_OBJECT"
-  ambiguity_policy: "report conservative unique assignment and optimistic including-ambiguity bounds"
+  ambiguity_policy: "report global equal-cost assignment ambiguity separately from local multiple-valid-edge diagnostics"
+  unknown_metric_bounds: [operational_unknown_retained, labeled_only_unknown_excluded]
+  external_controls_exclude_synthetic_ego: true
+  model_gate_status: PENDING
   camera_frames: "nearest selected frame per native timestamp, all seven ring cameras, tolerance <=100ms"
   camera_download_manifest: "/ehsan/m.sadegh/driveone_assets/refav/camera_download_manifest_20261008.json"
-  report: "/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v3/candidate_source_audit.json"
-  report_sha256: "0ad1d654d85c0e66cd82311cbcab7ebc75256db31e1e64d79b76e9273ecd69e0"
+  report: "/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v6/candidate_source_audit.json"
+  report_sha256: "52aff5c738bd674969c302f0fde3572b2e21e134a99e843b1182f7290157e9e7"
   expected_external_positive_availability: 0.80
   expected_positive_projection: 0.90
   expected_matching_sensitivity_max_change: 0.10
-  decision: REFAV_ORACLE_ONLY
-  proceed_to_model_training: false
+  decision: POOLED_BASELINE_GATE_READY
+  proceed_to_model_training: pooled_baseline_only

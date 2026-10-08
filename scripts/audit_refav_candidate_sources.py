@@ -32,7 +32,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from driveone.data.refav_candidate_sources import (  # noqa: E402
     AUDIT_VERSION, THRESHOLDS_M, associate, box_corners, build_pool,
-    choose_decision, count_bin, coverage, pool_hash, project_pool, validate_pool, validate_splits,
+    choose_decision, count_bin, coverage, matching_range, partition_external_control_rows,
+    pool_hash, project_pool, validate_pool, validate_splits,
 )
 from driveone.data.refav_tracker import (  # noqa: E402
     RING_CAMERAS, build_camera_file_index, build_camera_models, build_roi_map, load_tracker_pickle,
@@ -219,6 +220,7 @@ def main() -> int:
     collected = {s: [] for s in sources}
     pool_digests = {s: [] for s in sources}
     control_records = {s: [] for s in sources}
+    ego_control_records = {s: [] for s in sources}
     differences, integrity, camera_assets, replay_checks = [], [], [], []
     candidate_files = []
     group_file = (out / "groups.jsonl").open("w")
@@ -283,6 +285,9 @@ def main() -> int:
                                  "distance_m": float(np.linalg.norm(pose.inverse().transform_from(np.asarray(r["translation_m"])[None])[0, :2]))})
             historic.sort(key=lambda r: r["track_id"])
             pools = dict(zip(sources, [historic, official_pool, corrected, val, gt_eligible]))
+            for pool in pools.values():
+                for row in pool:
+                    row["synthetic_ego"] = bool(row.get("synthetic_ego") or row.get("name") == "EGO_VEHICLE")
             custom_ids, official_ids, causal_ids = [set(r["track_id"] for r in pools[s]) for s in sources[:3]]
             for track_id in sorted(custom_ids | official_ids | causal_ids):
                 row_writer.writerow({"log_id": log, "timestamp_ns": timestamp, "track_id": track_id,
@@ -378,17 +383,25 @@ def main() -> int:
                     for th, mapping in sensitivity.items():
                         confirmed = [i for i, m in mapping.items() if not m["ambiguous"] and target_eligible[m["gt_index"]]["track_id"] in eligible_external_positive]
                         possible = [i for i, m in mapping.items() if target_eligible[m["gt_index"]]["track_id"] in eligible_external_positive]
-                        group["matching_sensitivity"][th] = {"confirmed": len(confirmed), "including_ambiguous": len(possible)}
+                        group["matching_sensitivity"][th] = {
+                            "confirmed": len(confirmed),
+                            "including_ambiguous": len(possible),
+                            "assigned_candidate_count": len(mapping),
+                            "globally_ambiguous_assignment_count": sum(bool(m["ambiguous"]) for m in mapping.values()),
+                            "multiple_valid_edge_candidate_count": sum(bool(m.get("multiple_valid_edges")) for m in mapping.values()),
+                        }
                     group_file.write(json.dumps(group, sort_keys=True, separators=(",", ":")) + "\n")
                     # Group-local rows are shared by all controls; unknowns remain explicit.
                     # Keep the original semantic label and match status. For
                     # ranking only, an unmatched detector/tracker row is an
                     # explicit non-referred false positive, not OTHER_OBJECT.
-                    ranking_labels = [1 if label is None else label for label in labels]
-                    control_rows = [dict(r, prompt=prompt, label=ranking_label, source_label=label,
-                                         projected_box=[0, 0, r["projected_area_sum"], 1], match_distance_m=d,
-                                         visibility=float(r["any_projected"])) for r, ranking_label, label, d in zip(rows, ranking_labels, labels, distances)]
-                    control_records[source].extend(control_rows)
+                    control_rows = [dict(r, prompt=prompt, label=label, source_label=label,
+                                         match_status=status, projected_box=[0, 0, r["projected_area_sum"], 1],
+                                         match_distance_m=d, visibility=float(r["any_projected"]))
+                                    for r, label, status, d in zip(rows, labels, match_statuses, distances)]
+                    external_rows, ego_rows = partition_external_control_rows(control_rows)
+                    control_records[source].extend(external_rows)
+                    ego_control_records[source].extend(ego_rows)
                     collected[source].append({k: v for k, v in group.items() if k not in {"labels", "match_distances_m"}})
         for source, rows in source_rows.items():
             digest = validate_pool(rows)
@@ -419,9 +432,18 @@ def main() -> int:
             stratifications[field] = {value: coverage([g for g in groups if g[field] == value]) for value in sorted({g[field] for g in groups})}
         sensitivity = {}
         positive_groups = [g for g in groups if g.get("eligible_external_positive_count", g["eligible_positive_count"]) > 0]
+        status_counts = Counter()
+        for group in groups:
+            status_counts.update(group.get("statuses", {}))
         for th in ("1.0", "2.0", "4.0"):
-            sensitivity[th] = {"conditional_confirmed_group_recall": sum(g["matching_sensitivity"][th]["confirmed"] > 0 for g in positive_groups) / len(positive_groups) if positive_groups else None,
-                               "conditional_group_recall_including_ambiguity": sum(g["matching_sensitivity"][th]["including_ambiguous"] > 0 for g in positive_groups) / len(positive_groups) if positive_groups else None}
+            per_group = [g["matching_sensitivity"][th] for g in positive_groups]
+            sensitivity[th] = {
+                "conditional_confirmed_group_recall": sum(item["confirmed"] > 0 for item in per_group) / len(per_group) if per_group else None,
+                "conditional_group_recall_including_ambiguity": sum(item["including_ambiguous"] > 0 for item in per_group) / len(per_group) if per_group else None,
+                "assigned_candidate_count": sum(item["assigned_candidate_count"] for item in per_group),
+                "globally_ambiguous_assignment_count": sum(item["globally_ambiguous_assignment_count"] for item in per_group),
+                "multiple_valid_edge_candidate_count": sum(item["multiple_valid_edge_candidate_count"] for item in per_group),
+            }
         print(f"Controls: {source}, {len(control_records[source])} prompt-expanded rows", flush=True)
         controls = run_control_suite(control_records[source], seeds=(0, 1))
         for part in ("results",):
@@ -433,18 +455,30 @@ def main() -> int:
             for value in values:
                 subset = [r for r in control_records[source] if (r["log_id"] == value if field == "log_id" else log_split[r["log_id"]] == value)]
                 controls[output_field][value] = run_control_suite(subset, seeds=(0,))["results"]
-        controls["metrics_caveat"] = "AP/R@1 conditional on observed external positives+negatives; UNMATCHED_TRACK rows retain their status but are explicitly treated as non-referred detector false positives for ranking. This is not OTHER_OBJECT relabeling, not official HOTA, and not comparable to the old label-selected 500 groups."
+        controls["scenario_summary"] = {
+            "external_control_rows": len(control_records[source]),
+            "synthetic_ego_rows_excluded": len(ego_control_records[source]),
+            "ego_control_rows_not_scored": True,
+            "status_counts": dict(status_counts),
+        }
+        controls["metrics_caveat"] = (
+            "Two bounds are reported: labeled-only AP/R@1 excludes UNKNOWN/AMBIGUOUS rows from the ranked denominator; "
+            "pessimistic operational AP/R@1 retains those rows in rank order and leaves their labels unknown. "
+            "The external control run excludes synthetic EGO_VEHICLE rows. This is not official HOTA and is not comparable "
+            "to the old label-selected 500 groups."
+        )
         controls["learned_controls"] = "candidate-only/metadata-only and PE not rerun: no training authorized for this audit; old scores have different rows"
         write_json(out / f"controls_{source}.json", controls)
         distributions = {}
         for sign, labels in (("positive", {0}), ("negative", {1, 2}), ("unknown", {None})):
-            selected = [r for r in control_records[source] if r["label"] in labels]
+            selected = [r for r in control_records[source] if r.get("source_label") in labels]
             distributions[sign] = {field: distribution([r[field] for r in selected if r.get(field) is not None]) for field in ("score", "distance_m", "projected_area_sum", "match_distance_m")}
             distributions[sign]["size_volume_m3"] = distribution([float(np.prod(r["size"])) for r in selected])
             distributions[sign]["category"] = dict(Counter(r["name"] for r in selected))
         near_perfect = any((v[metric] or 0) >= 0.90 for k, v in controls["results"].items() if not k.startswith("oracle")
                            for metric in ("mean_average_precision", "recall_at_1"))
         comparisons[source] = {"coverage": full, "stratifications": stratifications, "matching_sensitivity": sensitivity,
+                               "status_counts": dict(status_counts),
                                "distributions": distributions, "pool_hashes": pool_digests[source], "near_perfect_deterministic_control": near_perfect,
                                "controls_path": str(out / f"controls_{source}.json"), "joint_log_template_holdout": coverage([g for g in groups if g["joint_holdout_eligible"]])}
         del control_records[source]
@@ -452,26 +486,56 @@ def main() -> int:
     causal = comparisons["le3de2e_causal"]
     oracle = comparisons["gt_oracle"]
     rates = [v["conditional_confirmed_group_recall"] for v in causal["matching_sensitivity"].values()]
-    stability = None if any(r is None for r in rates) else max(rates) - min(rates)
+    stability = None if any(r is None for r in rates) else matching_range(rates)
     gate = {"infrastructure_complete": infrastructure_complete, "pool_independent": True,
             "coverage_ge_0_80": (causal["coverage"]["positive_availability_given_eligible_gt_positive"] or 0) >= 0.80,
             "projection_ge_0_90": infrastructure_complete and (causal["coverage"]["positive_projection_rate_downloaded_cameras"] or 0) >= 0.90,
             "matching_stability_le_0_10": stability is not None and stability <= 0.10,
             "no_near_perfect_metadata_control": not causal["near_perfect_deterministic_control"],
-            "unknown_target_semantics_resolved": True,
-            "second_seed_pooled_model_and_matched_learned_controls": False}
+            "unknown_statuses_explicit": True}
+    model_gate = {"second_seed_pooled_model_and_matched_learned_controls": False, "status": "PENDING"}
+    # This is a data/association decision. The learned-model gate is recorded
+    # separately and cannot force a data failure before training is authorized.
+    association_uncertain = not gate["coverage_ge_0_80"] or not gate["matching_stability_le_0_10"]
     oracle_pass = None if not infrastructure_complete else (oracle["coverage"]["positive_availability_given_eligible_gt_positive"] or 0) >= .80 and (oracle["coverage"]["positive_projection_rate_downloaded_cameras"] or 0) >= .90
-    decision, reason = choose_decision(infrastructure_complete=infrastructure_complete, deployable_pass=all(gate.values()),
-                                       oracle_pass=oracle_pass, shortcut_dominated=causal["near_perfect_deterministic_control"])
+    decision, reason = choose_decision(infrastructure_complete=infrastructure_complete, data_gate_pass=all(gate.values()),
+                                       oracle_pass=oracle_pass, shortcut_dominated=causal["near_perfect_deterministic_control"],
+                                       association_uncertain=association_uncertain)
+    stability_by_source = {
+        source: matching_range([
+            item["conditional_confirmed_group_recall"]
+            for item in comparison["matching_sensitivity"].values()
+        ])
+        for source, comparison in comparisons.items()
+    }
+    previous_report = args.asset_root / "candidate_source_audit_20261008_v3/candidate_source_audit.json"
+    previous_hash_match = None
+    if previous_report.exists():
+        previous = json.loads(previous_report.read_text())
+        previous_hash_match = {
+            source: {
+                old["log_id"]: old["sha256"] == new["sha256"]
+                for old, new in zip(previous["candidate_sources"][source]["pool_hashes"], comparisons[source]["pool_hashes"])
+            }
+            for source in comparisons
+            if source in previous.get("candidate_sources", {})
+        }
+        previous_hash_match = {
+            "all_logs_match": all(all(logs_match.values()) for logs_match in previous_hash_match.values()),
+            "by_source": previous_hash_match,
+            "previous_report": str(previous_report),
+        }
     source_paths = [annotation_path, tracker_path, legacy_path, old_path, plan_path, args.official_repo / "refAV/dataset_conversion.py"]
     # Hash only small required sensor metadata; images are inventory evidence, not copied or downloaded.
     source_paths += [sensor_root / log / rel for log in logs for rel in ("annotations.feather", "city_SE3_egovehicle.feather", "calibration/intrinsics.feather", "calibration/egovehicle_SE3_sensor.feather")]
     source_paths += [p for log in logs for p in sorted((sensor_root / log / "map").glob("*.json"))]
     provenance = [{"path": str(p), "size_bytes": p.stat().st_size, "sha256": sha256(p)} for p in source_paths]
     report = {"audit_version": AUDIT_VERSION, "search_date": "2026-10-08", "decision": decision, "reason": reason,
-              "proceed_to_training": False, "gate_checks": gate, "candidate_sources": comparisons, "camera_assets": camera_assets,
+              "proceed_to_training": False, "gate_checks": gate, "model_gate": model_gate, "candidate_sources": comparisons, "camera_assets": camera_assets,
               "official_replay_checks": replay_checks, "pool_integrity": integrity, "pool_differences": differences,
-              "matching_stability_max_change": stability, "oracle_gate": "unresolved_missing_camera_assets" if oracle_pass is None else oracle_pass,
+              "matching_stability_max_change": stability, "matching_stability_by_source": stability_by_source,
+              "previous_v3_pool_hashes_match": previous_hash_match,
+              "oracle_gate": "unresolved_missing_camera_assets" if oracle_pass is None else oracle_pass,
               "source_revision": OFFICIAL_COMMIT, "provenance": provenance,
               "source_urls": {"official_repo": f"https://github.com/CainanD/RefAV/tree/{OFFICIAL_COMMIT}",
                               "tracker": "https://huggingface.co/datasets/CainanD/AV2_Tracker_Predictions",

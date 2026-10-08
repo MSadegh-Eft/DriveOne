@@ -39,6 +39,23 @@ projected-area controls, so patch tokens stay deferred.
 
 Add future entries with date, decision, evidence, and what would cause the decision to be reversed. This keeps the research process auditable as the project grows.
 
+## 2026-10-08 — Correct the evaluator before choosing a new source
+
+**Decision:** Rerun the candidate-source audit with corrected matching and
+external-only controls before replacing the tracker or stopping RefAV.
+
+**Evidence:** The previous evaluator marked any local multiple-edge match as
+ambiguous and converted unknown rows to operational negatives. The corrected
+global assignment has no equal-cost ties in the nine-log audit. The causal pool
+has 98.3%, 99.0%, and 99.1% availability at 1 m, 2 m, and 4 m, and its pool
+hashes are unchanged. Synthetic ego rows are now excluded from external
+controls. The data decision is `POOLED_BASELINE_GATE_READY`; the learned-model
+gate remains pending.
+
+**Next reversal condition:** If the corrected pooled baseline cannot beat the
+strongest matched control by the preregistered margin, or if new label-
+independent source/association checks fail, stop expanding the RefAV branch.
+
 ## 2026-10-08 — Keep RefAV as oracle-only
 
 **Decision:** Do not train DriveOne on the available Le3DE2E candidate pool.

@@ -1,139 +1,182 @@
 # RefAV candidate-pool decision
 
-## What this audit tested
+## Current status
 
-This audit asked whether RefAV can provide a fair candidate pool for a
-language-conditioned external-object track ranker. It used the nine logs in
-the pinned repeated-prompt plan and the native Le3DE2E tracker timestamps. No
-model was trained.
+The evaluation-correctness gate has been rerun on the same nine logs and the
+same candidate rows. No model was trained and no new data was downloaded.
 
-The official RefAV source was pinned to commit
-`5c5be6439ce59b61a31d56431a79a8a04bba33fa`. Its tracker conversion was
-replayed without editing upstream code. The replay matched our independent
-city-to-ego conversion with a maximum translation error of 0 m. The official
-conversion's whole-log score filter and Le3DE2E height adjustment were
-recorded separately because the score filter uses information from the whole
-log and is not a causal online candidate generator.
+```text
+POOLED_BASELINE_GATE_READY
+```
 
-The official tutorial uses Le3DE2E validation predictions:
-<https://raw.githubusercontent.com/CainanD/RefAV/main/run/tutorial.ipynb>.
-The source repository is <https://github.com/cainand/refav>.
-
-## Camera inputs
-
-The original local copy had only the front-center camera for eight logs. That
-would have made a camera-coverage conclusion invalid. We downloaded only the
-nearest camera frame for each of the 32 native tracker timestamps, for all
-seven ring cameras and all nine logs:
-
-- 1,536 JPEG files;
-- approximately 0.55 GB;
-- maximum camera timestamp offset: 32.7 ms;
-- manifest: `/ehsan/m.sadegh/driveone_assets/refav/camera_download_manifest_20261008.json`.
-
-The full audit now has all seven camera streams at every native timestamp used
-in the comparison. Geometric projection means that a 3-D box intersects an
-image; it does not prove that the object is unoccluded or visually clear.
-
-## Candidate-source results
+This means the **data and association checks are now good enough to run the
+frozen pooled-PE baseline**. It does not mean that DriveOne has passed its model
+quality gate.
 
 The machine-readable report is outside Git:
 
-`/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v3/candidate_source_audit.json`
-
-Report SHA-256: `0ad1d654d85c0e66cd82311cbcab7ebc75256db31e1e64d79b76e9273ecd69e0`.
-
-The audit contains 2,880 prompt/timestamp groups. Ego-vehicle referred
-prompts are reported separately because an ego box is not an external camera
-candidate. External-object results are:
-
-| Source | External referred availability | Positive projection | Unknown candidate fraction |
-| --- | ---: | ---: | ---: |
-| Official Le3DE2E replay | 68.6% | 100.0% | 80.0% |
-| Causal Le3DE2E pool | 66.9% | 100.0% | 92.3% |
-| Historical Valeo pool | 66.8% | 100.0% | 92.3% |
-| Ground-truth oracle pool | 100.0% | 100.0% | 0.0% |
-
-Availability is conditional on a ground-truth external referred object being
-eligible at that timestamp. The earlier 20.8% figure used all prompt
-timestamps, including timestamps where the event was absent; that was the
-wrong denominator for tracker recall.
-
-Conservative unique-assignment recall for the official replay is:
-
-| Match threshold | Recall on eligible external referred groups |
-| ---: | ---: |
-| 1 m | 71.7% |
-| 2 m | 68.6% |
-| 4 m | 59.2% |
-
-The 1 m to 4 m change is 20.8 percentage points, above the 10-point
-stability limit. The optimistic numbers that include ambiguous assignments
-are 96.4%, 97.0%, and 97.3%. Those cannot be the primary result because a
-single target may have multiple nearby tracker candidates and the label is not
-unique.
-
-The official replay controls use the same candidates for every control:
-
-| Control | mAP | Recall@1 |
-| --- | ---: | ---: |
-| Tracker confidence | 0.533 | 0.469 |
-| Candidate distance | 0.446 | 0.469 |
-| Projected box area | 0.144 | 0.124 |
-| Category frequency | 0.152 | 0.088 |
-| Random | 0.061 | 0.019 |
-
-These are diagnostics on the repaired native-timestamp pool. They are not
-comparable to the previous label-selected 500-group baseline and do not prove
-a model result.
-
-## Label and ranking policy
-
-Candidate membership is independent of prompts, mining labels, matching
-success, and future timestamps. The candidate-pool hash is unchanged if
-prompts and target labels are permuted.
-
-Unmatched tracker rows remain marked `UNMATCHED_TRACK`. For ranking diagnostics
-only, they are treated as explicit non-referred tracker false positives. They
-are not relabeled as `OTHER_OBJECT`. This reflects the meaning of a prediction
-that does not match any ground-truth object while preserving the original
-status for auditing.
-
-The official conversion also injects an `EGO_VEHICLE` row. Ego-vehicle prompts
-are kept as a separate scenario-level category and are not counted as
-camera-renderable external-object candidates.
-
-## Decision
-
 ```text
-REFAV_ORACLE_ONLY
+/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v6/candidate_source_audit.json
+SHA-256 52aff5c738bd674969c302f0fde3572b2e21e134a99e843b1182f7290157e9e7
 ```
 
-The ground-truth oracle proves that the annotations, poses, calibration, and
-camera data can support an external-object ranking experiment. The available
-Le3DE2E tracker does not provide enough uniquely matched referred candidates,
-and its confidence and distance metadata are strong ranking shortcuts.
+The previous v3 report remains unchanged. Its conclusion was too conservative
+because it treated every locally ambiguous match as an unknown label and mixed
+synthetic ego rows into the external controls. It is retained as an audit
+history, not overwritten.
 
-Therefore:
+## What was corrected
 
-- Do not train DriveOne on the official Le3DE2E pool.
-- Do not present the oracle pool as deployment-like candidate generation.
-- Keep RefAV as a documented oracle-candidate or negative finding.
-- A new independent detector/tracker source is required before the RefAV
-  branch can support the central candidate-ranking claim.
-- If no such source is found, stop this RefAV branch and pivot to a task with
-  an independently generated candidate pool.
+1. **Global assignment ambiguity.** A candidate with more than one valid local
+   geometric edge is now recorded as a diagnostic (`multiple_valid_edges`). It
+   becomes `AMBIGUOUS_MATCH` only when removing its assigned edge leaves another
+   equal-cardinality, equal-cost global assignment. Nearby objects therefore do
+   not automatically count as tracker misses.
+2. **Unknown labels.** Candidate rows retain `label=None` and their original
+   `match_status`. The controls report two bounds: labeled-only metrics exclude
+   unknown rows from the metric denominator, while pessimistic operational
+   metrics keep unknown rows in ranking order so they can push a positive down.
+3. **Ego separation.** Synthetic `EGO_VEHICLE` rows remain in the candidate
+   pool and its hash, but are excluded from external-object controls. Ego
+   scenarios are counted separately.
+4. **Data/model separation.** The report has a data gate and a model gate. The
+   second-seed pooled model is marked `PENDING`; it cannot cause a data audit to
+   fail before training is authorized.
+5. **Threshold arithmetic.** The official replay changes from 71.7% at 1 m to
+   59.2% at 4 m in the historical v3 report, a 12.4-point range. The 20.8-point
+   range belonged to the old causal matching policy. Under the corrected global
+   assignment, the causal range is 1.07 points and the official replay range is
+   0.87 points.
 
-The audit does not justify patch tokens, temporal input, Qwen, distillation,
-trajectory scoring, or deployment optimization.
+## Candidate and camera policy
+
+Candidate membership was not changed. The audit still uses all eligible rows
+at each native tracker timestamp, finite positive geometry, the fixed 50 m and
+ROI filters, and a deterministic pool hash. Labels are attached only after the
+pool is complete. All seven ring cameras use the fixed nearest-frame policy
+within 100 ms, and out-of-view rows remain in the pool.
+
+The official RefAV repository is pinned to commit
+`5c5be6439ce59b61a31d56431a79a8a04bba33fa`. The official tutorial uses
+Le3DE2E validation predictions:
+<https://raw.githubusercontent.com/CainanD/RefAV/main/run/tutorial.ipynb>.
+The source repository is <https://github.com/cainand/refav>.
+
+The final input artifacts remain:
+
+- `scenario_mining_val_annotations.feather`, SHA-256
+  `e461e51057fdf347a11bdd60609e7de0b0bd8d0eb199314b3fd73c50106d48c9`;
+- `Le3DE2E_tracking_predictions_val.pkl`, SHA-256
+  `fd702ade8b640d325e5096e90f63cf1bf43f94a87a6aabfb52e71aa7b8470875`;
+- repeated-prompt plan, SHA-256
+  `cba73f6f34a5373bf3a5f69765b78f5eeebf48ad2ebdab38032a204cd7c60f85`.
+
+The corrected per-log candidate hashes are identical to v3 for all five source views.
+This confirms that the evaluator correction did not change candidate
+membership.
+
+## Corrected coverage and association
+
+The audit contains 2,880 prompt/timestamp groups. External availability is
+conditional on an eligible external ground-truth referred object; it is not the
+fraction of all timestamps that contain a scenario event.
+
+| source | external referred availability at 2 m | positive projection | unknown candidate fraction |
+| --- | ---: | ---: | ---: |
+| causal Le3DE2E pool | 99.0% | 100.0% | 88.7% |
+| official replay | 97.0% | 100.0% | 74.1% |
+| historical pool | 99.0% | 100.0% | 88.7% |
+| ground-truth oracle | 100.0% | 100.0% | 0.0% |
+
+The causal pool’s conservative group availability is 98.3%, 99.0%, and 99.1%
+at 1 m, 2 m, and 4 m. The maximum change is 1.07 percentage points. The
+official replay is 96.4%, 97.0%, and 97.3%, with a 0.87-point range.
+
+The causal pool still has many unmatched tracker rows: 603,230 of 680,040
+candidate rows (88.7%). This is not the same as saying that 88.7% of referred
+objects are missing. Most eligible referred groups have at least one tracker
+candidate assigned under the corrected global matching. Unmatched rows remain
+important because they enlarge the candidate list and can affect operational
+ranking.
+
+There are many local geometric alternatives, but no equal-cost global
+assignment ties in the corrected nine-log report. At 2 m the causal pool has
+3,964 assigned candidates with more than one local valid edge; the corresponding
+number for the official replay is 3,528. These are crowded-scene diagnostics,
+not proof that the rows are duplicate tracker proposals. No NMS has been
+applied.
+
+## Corrected external controls
+
+Controls were recomputed after removing synthetic ego rows. Each control uses
+the same external candidate rows. The controls report both metric bounds:
+
+- **operational:** unknown rows stay in the ranking order;
+- **labeled-only:** unknown and ambiguous rows are excluded from the metric
+  denominator.
+
+For the causal Le3DE2E pool:
+
+| control | operational mAP | labeled-only mAP | operational Recall@1 | labeled-only Recall@1 |
+| --- | ---: | ---: | ---: | ---: |
+| tracker confidence | 0.264 | 0.274 | 0.166 | 0.169 |
+| projected box area | 0.143 | 0.289 | 0.110 | 0.164 |
+| candidate distance | 0.078 | 0.242 | 0.056 | 0.123 |
+| category frequency | 0.027 | 0.226 | 0.006 | 0.129 |
+| random | 0.035 | 0.222 | 0.010 | 0.114 |
+
+The official replay has the same qualitative pattern: tracker confidence is the
+strongest operational shortcut (mAP 0.272), while projected area is strong on
+labeled-only rows (mAP 0.295). None of these controls is near-perfect after the
+evaluator correction. They are still mandatory baselines for the pooled model.
+
+The output also includes per-log, split, candidate-count, and prompt-holdout
+stratifications. The strongest controls vary by log, so later model results must
+not be reported only as one pooled number.
+
+## Decision and next step
+
+The corrected data gate passes:
+
+- candidate membership is independent and hash-stable;
+- projection coverage is complete for the selected camera assets;
+- external referred availability exceeds 80%;
+- matching stability is within 10 percentage points;
+- unknown statuses are explicit;
+- synthetic ego rows no longer inflate external controls;
+- the model gate is separately marked pending.
+
+Therefore the next experiment is the **frozen pooled-PE baseline gate** on the
+causal all-tracker pool, with the same candidate rows for every method:
+
+1. reproduce the one-seed pooled-PE, task-ID, candidate-only, and metadata-only
+   controls on the corrected external groups;
+2. run a second seed only after the one-seed result is reproducible;
+3. report both operational and labeled-only mAP/Recall@1, per-log and
+   candidate-count results, hard-negative results, NLL/Brier/ECE where the label
+   policy is defined, and end-to-end timing scope;
+4. compare against tracker score, distance, projected area, category, and
+   random controls;
+5. test patch tokens only if pooled PE beats the strongest matched baseline by
+   at least +5 Recall@1 points or +0.03 mAP with two-seed confidence intervals
+   excluding zero and no material calibration regression.
+
+Do not apply NMS merely because local matching alternatives exist. First inspect
+crowded examples. If a future NMS or track-consistency variant is tested, it
+must be label-independent, deterministic, separately hashed, and compared as a
+candidate-pool variant.
+
+Do not run PE-Spatial, temporal frames, Qwen, distillation, trajectories, or
+deployment optimization before the corrected pooled baseline gate passes.
 
 ## Reproduction
 
 ```bash
 TMPDIR=/data/sadegh/tmp conda run --no-capture-output -n refav \
   python scripts/audit_refav_candidate_sources.py \
-  --output-dir /ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v3
+  --output-dir /ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v6
 ```
 
-Large candidate and control artifacts stay outside Git. The repository keeps
-the audit code, tests, configuration, and this decision record.
+The audit code, tests, configuration, and this decision record are tracked in
+Git. Large candidate files, camera images, controls, and JSON reports remain
+outside Git.

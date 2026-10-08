@@ -11,10 +11,13 @@ from driveone.data.refav_candidate_sources import (  # noqa: E402
     choose_decision,
     count_bin,
     coverage,
+    matching_range,
+    partition_external_control_rows,
     pool_hash,
     validate_pool,
     validate_splits,
 )
+from driveone.eval.refav_metrics import run_control_suite  # noqa: E402
 
 
 class CandidateSourceAuditTests(unittest.TestCase):
@@ -37,6 +40,37 @@ class CandidateSourceAuditTests(unittest.TestCase):
         matches = associate(candidates, gt, threshold_m=2.0)
         self.assertEqual(len(matches), 1)
         self.assertTrue(next(iter(matches.values()))["ambiguous"])
+
+    def test_global_assignment_can_be_unique_with_local_alternatives(self):
+        candidates = [self._row(1, 0.0), self._row(2, 1.9)]
+        gt = [dict(self._row("gt-a", 0.1), track_id="gt-a"), dict(self._row("gt-b", 3.0), track_id="gt-b")]
+        matches = associate(candidates, gt, threshold_m=2.0)
+        self.assertEqual({item["gt_index"] for item in matches.values()}, {0, 1})
+        self.assertFalse(any(item["ambiguous"] for item in matches.values()))
+        self.assertTrue(any(item["multiple_valid_edges"] for item in matches.values()))
+
+    def test_unknown_labels_are_preserved_and_reported_as_two_metric_bounds(self):
+        rows = [
+            dict(self._row("positive", 1.0), prompt="q", label=0, score=0.5),
+            dict(self._row("negative", 2.0), prompt="q", label=1, score=0.4),
+            dict(self._row("unknown", 3.0), prompt="q", label=None, score=0.9),
+        ]
+        result = run_control_suite(rows, seeds=(0,))
+        self.assertEqual(result["dataset"]["unmatched_record_count"], 1)
+        tracker = result["results"]["tracker_score:seed_0"]
+        self.assertLess(tracker["mean_average_precision"], tracker["labeled_only_mean_average_precision"])
+        self.assertEqual(tracker["labeled_only_mean_average_precision"], 1.0)
+
+    def test_ego_rows_are_partitioned_before_external_controls(self):
+        external, ego = partition_external_control_rows([
+            dict(self._row("external", 1.0)),
+            dict(self._row("ego", 0.0), name="EGO_VEHICLE", synthetic_ego=True),
+        ])
+        self.assertEqual([r["track_id"] for r in external], ["external"])
+        self.assertEqual([r["track_id"] for r in ego], ["ego"])
+
+    def test_threshold_range_is_reported_in_fraction_units(self):
+        self.assertAlmostEqual(matching_range([0.7167630058, 0.6864161850, 0.5924855491]), 0.1242774567, places=9)
 
     def test_coverage_separates_ego_event_frequency_from_external_availability(self):
         rows = [
@@ -62,8 +96,9 @@ class CandidateSourceAuditTests(unittest.TestCase):
             validate_splits({"train": ["a"], "test": ["a"]})
         self.assertEqual(count_bin(0), "0")
         self.assertEqual(count_bin(51), "51-100")
-        self.assertEqual(choose_decision(infrastructure_complete=True, deployable_pass=True, oracle_pass=True)[0], "OFFICIAL_PROTOCOL_REPAIRED")
-        self.assertEqual(choose_decision(infrastructure_complete=False, deployable_pass=False, oracle_pass=None)[0], "ALTERNATE_CANDIDATE_SOURCE_REQUIRED")
+        self.assertEqual(choose_decision(infrastructure_complete=True, data_gate_pass=True, oracle_pass=True)[0], "POOLED_BASELINE_GATE_READY")
+        self.assertEqual(choose_decision(infrastructure_complete=True, data_gate_pass=False, oracle_pass=True, association_uncertain=True)[0], "ASSOCIATION_REVIEW_REQUIRED")
+        self.assertEqual(choose_decision(infrastructure_complete=False, data_gate_pass=False, oracle_pass=None)[0], "ALTERNATE_CANDIDATE_SOURCE_REQUIRED")
 
 
 if __name__ == "__main__":

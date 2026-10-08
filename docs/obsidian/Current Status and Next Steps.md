@@ -5,7 +5,7 @@
 - The repository was created as an isolated DriveOne project.
 - The data contract, verifier, tracker adapter, PE smoke test, controls, tests, and documentation exist.
 - Official RefAV metadata, annotations, tracker output, and AV2 sensor assets were inspected.
-- The code passes nineteen tests in the `refav` environment.
+- The code passes 35 tests in the `refav` environment.
 - `PE-Core-L14-336` was tested through the official CLIP image and text path on host GPU 2.
 
 ## Repaired candidate protocol
@@ -177,7 +177,7 @@ temporal frames, trajectories, or distillation.
 - `19c8859` — frozen-PE subset export, feature extraction, and baseline controls.
 - `3bd966b` — baseline helper tests for fixed feature shape and unknown-row ranking.
 
-## Candidate-source audit result
+## Candidate-source audit result (historical v3)
 
 The official Le3DE2E conversion was replayed on the nine native timestamp
 grids. The city-to-ego conversion matched exactly. We downloaded only the
@@ -196,11 +196,29 @@ results. Unmatched rows stay `UNMATCHED_TRACK`; the ranking diagnostic treats
 them as explicit non-referred tracker false positives without calling them
 `OTHER_OBJECT`.
 
-The decision is `REFAV_ORACLE_ONLY`. Keep RefAV only as an oracle-candidate or
-negative diagnostic unless an independent detector/tracker source is found.
-Do not add patch tokens, temporal frames, Qwen, distillation, trajectories, or
-deployment optimization on this branch.
+The v3 conclusion was conservative because it treated every locally ambiguous
+geometric edge as an unknown and included synthetic ego rows in the controls.
+It remains unchanged as historical evidence.
 
 See [RefAV candidate-pool decision](../refav_candidate_pool_decision.md) and
 the external report at
 `/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v3/candidate_source_audit.json`.
+
+## Evaluation-correctness gate (v6 report)
+
+The evaluator was corrected without changing candidate membership. A match is
+now globally ambiguous only when an equal-cardinality, equal-cost assignment
+exists; local multiple-edge cases remain diagnostics. Unknown labels remain
+explicit, and synthetic ego rows are excluded from external controls.
+
+The corrected v6 report is outside Git at
+`/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v6/candidate_source_audit.json`.
+The causal pool has 98.3%, 99.0%, and 99.1% availability at 1 m, 2 m, and 4
+m, with a 1.07-point range. Candidate hashes match the v3 report. External
+controls are no longer near-perfect after correction. The decision is
+`POOLED_BASELINE_GATE_READY`.
+
+Next: rerun candidate-only, metadata-only, task-ID, and pooled-PE controls on
+the causal pool with one seed, then a second seed if reproducible. Report both
+operational unknown-retained and labeled-only metric bounds. Do not add patch
+tokens, Qwen, temporal input, trajectories, or distillation yet.

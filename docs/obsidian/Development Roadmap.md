@@ -21,10 +21,12 @@ This page answers two questions: **what should I read?** and **why are we doing 
 ## Current location
 
 Stages 0 through 6 produced the fixed manifest, audit, PE interface report,
-deterministic controls, and corrected frozen-PE baseline. The CPU-only
-protocol-diagnosis gate then returned `PROTOCOL_REPAIR_REQUIRED`. The project is
-now between stages 6 and 7: repair and re-audit the candidate pool before any
-patch-token model is implemented.
+deterministic controls, and historical frozen-PE baseline. The evaluator-
+correctness gate now returns `POOLED_BASELINE_GATE_READY`: candidate hashes are
+unchanged, external availability is about 99% at 2 m, and ego rows are excluded
+from external controls. The project is between the corrected data gate and the
+pooled model gate. Run one corrected pooled baseline seed, then a second seed
+only if the first is reproducible. Patch tokens remain deferred.
 
 ## The file reading order
 
