@@ -1404,7 +1404,9 @@ The following items are deliberately **not** complete:
 - no safety claim;
 - no publication claim based on the current data audit.
 
-The absence of these experiments is intentional. They are downstream of the corrected pooled-baseline gate, which has not yet run.
+The absence of these experiments is intentional. They are downstream of the
+corrected pooled-baseline gate, which has now run and failed its quality
+criteria.
 
 ## 18. Decision record and reading order
 
@@ -1451,3 +1453,197 @@ the task should use a fixed multi-camera representation, or whether RefAV
 should be recorded as a negative branch and replaced by a fairer candidate
 interface. The machine-readable report is `baseline_gate_report.json` in the
 external asset directory; it stays outside Git with the data and checkpoints.
+
+## 19. Detailed record of the corrected pooled-PE gate
+
+This section explains the most recent experiment in one place. It is included
+so that the project guide remains understandable even when the external JSON
+files are not open.
+
+### 19.1 What question did this experiment ask?
+
+The question was narrow:
+
+> With the repaired RefAV candidate pool fixed, does a small scorer using one
+> image and frozen pooled PE image/text features rank the referred track better
+> than simple controls?
+
+This is not a test of driving policy, yielding, safety, planning, or real-time
+deployment. It tests only the first learned ranking step. A negative result is
+useful because it prevents a larger model from hiding a weak candidate
+interface or a weak representation.
+
+### 19.2 What data entered the run?
+
+The run used the official RefAV Le3DE2E tracker source and the same nine logs
+used by the repeated-prompt plan. The adapter read the v6 causal candidate
+pool before attaching prompt labels. It then joined the official tracker
+fields, AV2 pose data, and the nearest fixed `ring_front_center` image.
+
+The final export contains 2,880 prompt/timestamp groups:
+
+| Split | Groups | Candidate rows | Positive rows | Unknown rows |
+|---|---:|---:|---:|---:|
+| Train | 960 | 270,190 | 454 | 236,600 |
+| Validation | 960 | 209,640 | 335 | 184,960 |
+| Test | 960 | 200,210 | 361 | 181,670 |
+
+The same timestamp pool is repeated for several prompts. Therefore the
+prompt-expanded JSONL contains repeated `(log_id, timestamp_ns, track_id)`
+rows by design. The source pool before prompt expansion has no duplicate keys.
+The source pool hash is checked before labels are attached, and the hash stays
+unchanged in the exported manifest.
+
+The candidate rows keep `None` for unknown labels. Unknown rows are not
+silently changed to `OTHER_OBJECT`. They remain in the ranking list, where
+they can push a known positive down, but they are omitted from the BCE loss.
+
+### 19.3 What code performed the conversion?
+
+The main files and their jobs are:
+
+- `src/driveone/data/refav_baseline_export.py` reads the v6 source rows,
+  checks the candidate and label array lengths, checks the pool hash, converts
+  city-frame centers to ego-frame centers, attaches the fixed camera image,
+  and shuffles candidates with a stable per-group seed.
+- `scripts/export_refav_baseline.py` is the command-line entry point. It
+  validates that every log belongs to the planned split, writes Feather and
+  JSONL exports, and records the source hashes and adapter time.
+- `scripts/train_refav_baselines.py` loads the exported rows and frozen PE
+  tensors, trains four small scorers, and reports operational and
+  labeled-only ranking metrics.
+- `src/driveone/eval/bootstrap.py` computes paired bootstrap intervals over
+  the same groups.
+- `scripts/compare_refav_baseline_seeds.py` compares pooled PE against task ID,
+  candidate-only, and metadata-only controls.
+- `scripts/report_refav_baseline_gate.py` combines the data checks, control
+  results, learned results, timing, hashes, and decision into the external
+  `baseline_gate_report.json`.
+
+### 19.4 What were the model inputs?
+
+All methods received the same candidate rows and candidate order. Candidate
+geometry contains normalized projected-box coordinates when the object is in
+the front-center view, a visibility flag, distance, object size, and ego-frame
+translation. A separate category embedding represents the raw tracker
+category.
+
+The four learned controls were:
+
+1. **Candidate-only:** candidate geometry and category, with no image or
+   question.
+2. **Metadata-only:** tracker score, raw tracker label, distance, and category.
+3. **Task ID:** pooled PE image features plus a learned embedding for the
+   prompt/task ID.
+4. **Pooled PE:** pooled PE image features plus PE text features for the full
+   question.
+
+The PE weights were frozen. The small head used linear projections to 64
+dimensions, a category embedding, GELU, layer normalization, and a shared
+two-layer scoring head. Training used binary cross-entropy only on candidates
+with known positive or negative labels. The ranking metric still used the
+complete candidate pool.
+
+### 19.5 What did the deterministic controls show?
+
+These controls do not learn an image representation. They test whether the
+candidate pool already contains a useful shortcut.
+
+| Test control | mAP | Recall@1 |
+|---|---:|---:|
+| Random | 0.0335 | 0.0090 |
+| Distance | 0.0309 | 0.0000 |
+| Tracker score | 0.1625 | 0.0315 |
+| Category frequency | 0.0940 | 0.0360 |
+| Fixed front-center projected area | 0.1964 | 0.1712 |
+| Oracle label ranking | 1.0000 | 1.0000 |
+
+Projected area is a strong control. This means that the referred-object label
+is correlated with how large the projected box is in the selected camera. A
+model that wins only because it learns this geometry would not support the
+intended language-grounded claim.
+
+### 19.6 What did the learned models show?
+
+The main metrics below are **operational**: unknown candidates remain in the
+pool. Labeled-only mAP is included only as a diagnostic.
+
+| Method | Seed | mAP | Recall@1 | Labeled-only mAP | ECE |
+|---|---:|---:|---:|---:|---:|
+| Candidate-only | 0 | 0.0780 | 0.0405 | 0.2321 | 0.0559 |
+| Metadata-only | 0 | 0.0830 | 0.0270 | 0.3242 | 0.0402 |
+| Task ID + pooled image | 0 | 0.0787 | 0.0495 | 0.2737 | 0.0468 |
+| Question + pooled PE | 0 | 0.0668 | 0.0360 | 0.2277 | 0.1583 |
+| Candidate-only | 1 | 0.0710 | 0.0315 | 0.2500 | 0.0405 |
+| Metadata-only | 1 | 0.0810 | 0.0405 | 0.2631 | 0.0282 |
+| Task ID + pooled image | 1 | 0.0718 | 0.0315 | 0.2190 | 0.2182 |
+| Question + pooled PE | 1 | 0.0569 | 0.0135 | 0.2197 | 0.1048 |
+
+Pooled PE is below task ID on both seeds. It is also below metadata-only and
+far below projected-area ranking. The seed-0 pooled-PE ECE is 0.1583, compared
+with 0.0468 for task ID, so the accuracy result is not accompanied by better
+calibration.
+
+The required preregistered margin was at least +0.03 mAP or +0.05 Recall@1
+over the strongest matched baseline. Pooled PE instead differs from task ID
+by −0.0119 mAP and −0.0135 Recall@1 on seed 0, and by −0.0149 mAP and
+−0.0180 Recall@1 on seed 1.
+
+The paired test-set bootstrap intervals for pooled PE minus task ID were:
+
+| Metric | Seed | Mean difference | 95% interval |
+|---|---:|---:|---:|
+| Operational mAP | 0 | −0.0119 | [−0.0339, 0.0089] |
+| Operational mAP | 1 | −0.0149 | [−0.0245, −0.0056] |
+| Operational Recall@1 | 0 | −0.0135 | [−0.0405, 0.0135] |
+| Operational Recall@1 | 1 | −0.0180 | [−0.0405, 0.0000] |
+
+These intervals do not support the required positive improvement.
+
+### 19.7 What does camera coverage tell us?
+
+The association audit and the fixed-view baseline measure different things.
+Conditional on an eligible ground-truth event, the 2 m association gives
+98.99% positive availability. Across every timestamp group, availability is
+only 23.8%, because many sampled timestamps contain no referred event. This
+is an event-sampling statistic, not a direct tracker-recall estimate.
+
+The seven-camera audit projects 100% of matched positives into at least one
+available camera. The baseline deliberately uses only `ring_front_center` so
+that the comparison has one fixed image. In that view, only 46.0% of test
+positive rows have a projected box. A positive can still be in the candidate
+pool when it is outside the front-center view, but the image cannot provide
+direct visual evidence for it.
+
+This is why adding patch tokens to the same one-camera setup would be a weak
+next step. The representation cannot recover visual evidence from a camera
+that does not see the object.
+
+### 19.8 What did the timing measure?
+
+The adapter took 120.1 seconds to create the prompt-expanded export. The
+missing PE cache extraction took 157.4 seconds on CPU for 86 images and 33
+prompts. The baseline script measured JSONL loading, image-file validation,
+cached feature loading, tensor construction, training, and cached-feature
+scoring.
+
+For seed 0, JSONL reading took 82.1 seconds, input construction 15.6 seconds,
+and the pooled-PE scorer trained for 5.7 seconds and scored the three splits in
+3.2 seconds. These are research-run timings, not deployment latency. They do
+not include image decoding, PE image encoding for new frames, candidate
+construction, calibration, or postprocessing.
+
+### 19.9 Final interpretation and next action
+
+The data protocol is usable for a controlled diagnostic: candidates are
+created before labels are attached, unknowns are explicit, hashes are stable,
+and log splits are disjoint. The first learned representation test is not
+successful. Pooled PE does not add useful ranking quality over simpler
+controls, and the fixed camera has limited positive visibility.
+
+The correct next action is a design choice, not a larger model. Either define
+one fixed multi-camera candidate representation and rerun the pooled baseline
+with every control matched to it, or record RefAV as a negative branch and
+choose a task with a fairer candidate interface. Patch tokens, Qwen,
+distillation, temporal frames, trajectories, and deployment optimization stay
+deferred until that choice is resolved.
