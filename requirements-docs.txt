@@ -1,0 +1,2 @@
+# Used only to rebuild the human-readable project-guide PDF.
+reportlab>=4,<6

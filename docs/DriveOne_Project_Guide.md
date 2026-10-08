@@ -1,5 +1,7 @@
 # DriveOne Project Guide
 
+> **Last updated:** 8 October 2026. The current RefAV candidate-source audit is complete. The project is paused at a data-validity gate; no new model architecture is being trained.
+
 ## How to use this guide
 
 This is the main guide for the whole DriveOne project. Read it from the top the first time. It explains the project in simple English, but it keeps the technical meaning.
@@ -547,7 +549,7 @@ answer is easy to find.
 
 ### 6.2 Tracker predictions
 
-The public Valeo4Cast tracker file is the source of candidate objects. A frame
+The historical pilot used a Valeo4Cast-derived tracker file. The later source audit separately replayed the official RefAV Le3DE2E tracker; both source histories are kept so that old results are not silently rewritten. A frame
 contains arrays such as:
 
 ```text
@@ -773,6 +775,22 @@ This file does not train a model or project a cuboid into an image. It checks th
 - `select_decision_timestamps` keeps aligned prompt timestamps without looking at relevance labels.
 - `prepare_records` combines all operations and writes candidate rows.
 
+**`src/driveone/data/refav_repair.py`** is the stricter adapter used for the
+official Le3DE2E replay. It builds the candidate pool first, then associates
+tracker rows with ground truth. This order is important: matching success and
+prompt labels cannot decide which candidates enter the pool. It also keeps the
+four association states `MATCHED_ANNOTATED`, `MATCHED_UNANNOTATED_GT`,
+`UNMATCHED_TRACK`, and `AMBIGUOUS_MATCH`, and contains the fixed class
+compatibility map, Hungarian matching, seven-camera projection, and candidate
+pool hashing rules.
+
+**`src/driveone/data/refav_candidate_sources.py`** is the source-comparison
+layer. It loads the official replay, the causal all-tracker pool, the older
+historical pool, and a ground-truth oracle pool under one common schema. It
+computes coverage, matching sensitivity, projection coverage, unknown-row
+rates, per-log statistics, candidate-count strata, and deterministic control
+inputs. It does not train a model.
+
 **`src/driveone/data/refav_splits.py`** plans log-disjoint repeated-prompt splits. It finds exact prompt strings that occur in at least three logs, selects disjoint log triplets, and assigns one log in each triplet to train, validation, and test. It does not prove semantic template separation.
 
 ### Evaluation module
@@ -811,6 +829,19 @@ Unknown candidates stay in the ranking order but are excluded from positive/nega
 
 It also validates log-disjoint splits, duplicate candidates, shared images, labels, source image dimensions, feature counts, and pretrained PE metadata. It reports ranking, calibration, per-log, and candidate-count metrics. The baseline uses BCE on labeled rows. Unknown rows are left out of the loss but remain in evaluation.
 
+**`scripts/repair_refav_protocol.py`** runs the official Le3DE2E repair. It
+replays the pinned RefAV conversion, creates a label-independent candidate pool,
+performs fixed-threshold association, projects every candidate into the seven
+ring cameras, and writes a repaired manifest plus provenance summary.
+
+**`scripts/audit_refav_candidate_sources.py`** is the latest diagnosis script.
+It compares candidate sources without fitting DriveOne. It uses Arrow
+column-selection and filtering so the 17-million-row annotation file can be
+read without materializing the whole file as Python dictionaries. It also
+replays the official conversion functions from the pinned RefAV repository and
+records the source code hash. Its output is the external JSON report whose
+decision is `REFAV_ORACLE_ONLY`.
+
 ### Tests
 
 The `tests/` directory uses Python `unittest`.
@@ -822,7 +853,9 @@ The `tests/` directory uses Python `unittest`.
 - `test_verify_script.py` checks the dependency-light verifier behavior.
 - `test_refav_baselines.py` checks feature shape, unknown-row ranking, and that task ID and pooled PE accept the same image input.
 
-The current suite has 20 passing tests in the `refav` environment. Tests use small synthetic records; they do not prove model quality.
+The current suite has **31 passing tests** in the `refav` environment. Tests use
+small synthetic records; they check code behavior and contract logic, not model
+quality or dataset validity.
 
 ### Documentation and policy
 
@@ -838,102 +871,264 @@ The current suite has 20 passing tests in the `refav` environment. Tests use sma
 
 **`.gitignore`** keeps data, weights, caches, runs, and generated reports out of commits. Large artifacts live under the external asset root, currently `/ehsan/m.sadegh/driveone_assets/refav`.
 
-## 9. What we have done so far
+## 9. What has been done so far — a complete ledger
 
-### Repository and documentation
+This section records the work in the order it happened. A result is marked as a
+**measurement**, **code/infrastructure**, or **interpretation** so that a
+future reader can see exactly what is known and what still needs testing.
 
-The standalone `driveone` repository was created under `/data/sadegh/driveone`. It is separate from other projects such as `fail2drive`. The first report and proposal remain outside the code pipeline; the report is available at `/data/sadegh/driveone/reports/DriveOne_Due_Diligence_Report.pdf`.
+### 9.1 Repository and project boundary — code/infrastructure
 
-### Data inspection
+The standalone Git repository was created at `/data/sadegh/driveone`, separate
+from sibling projects such as `fail2drive`. Large data, model weights, cached
+features, run outputs, and generated reports are ignored by Git. The external
+asset root is `/ehsan/m.sadegh/driveone_assets/refav`.
 
-The official RefAV annotation artifact and public tracker files were inspected. The annotation file is ground-truth scenario information, not a complete candidate file. It lacks tracker score and camera association, so it cannot be used alone for this model.
+The repository now contains the data adapters, contract checks, split planner,
+control metrics, PE smoke test, baseline scripts, tests, configuration, and
+plain-language documentation. The due-diligence report and original proposal
+are reference documents; they are not silently treated as training data.
 
-### Candidate manifest
+### 9.2 Formal data contract — code/infrastructure
 
-The public tracker and AV2 sensor assets were used to construct a repaired six-log manifest and then a nine-log repeated-prompt manifest. The nine-log manifest contains 3,338,670 candidate rows in 14,120 groups. It has 3,242 rankable groups. Every row has a shared camera image association. Many tracker rows are unmatched; they remain explicit candidates instead of being labeled negative.
+We defined a ranking group as `(log_id, prompt, decision_timestamp)` with one
+shared visual observation and all eligible candidates at that time. Candidate
+membership must be decided without looking at `REFERRED_OBJECT`,
+`RELATED_OBJECT`, `OTHER_OBJECT`, matching success, or future timestamps.
+Unknown tracker rows are kept and marked explicitly. This prevents a model from
+being rewarded for a candidate list that was hand-built around the answer.
 
-### Split plan
+### 9.3 Raw source inspection — measurement
 
-The nine logs are arranged as three train/validation/test triplets. Each triplet has two exact prompt strings shared across its three logs. The split is log-disjoint. It is not a full semantic template holdout because we do not have a trusted prompt-family taxonomy.
+The official RefAV validation annotation artifact was inspected and pinned:
 
-### Shortcut controls
+```text
+scenario_mining_val_annotations.feather
+SHA-256 e461e51057fdf347a11bdd60609e7de0b0bd8d0eb199314b3fd73c50106d48c9
+17,254,820 rows; 150 logs; 403 prompt strings
+```
 
-On the full nine-log pool, tracker score and projected box area are already strong. Score-and-size matching reduces but does not remove the geometry shortcut. Control strength differs greatly by log, so pooled headline numbers would hide important variation.
+The official RefAV repository is pinned to commit
+`5c5be6439ce59b61a31d56431a79a8a04bba33fa`. The official Le3DE2E validation
+tracker is pinned to:
 
-### PE interface
+```text
+Le3DE2E_tracking_predictions_val.pkl
+SHA-256 fd702ade8b640d325e5096e90f63cf1bf43f94a87a6aabfb52e71aa7b8470875
+Hugging Face revision d983c7955b1c6a126542bea0a4dfb3a2c7327e6a
+```
 
-The official `PE-Core-L14-336` checkpoint was run on a real AV2 image on host GPU 2. It returned:
+The repeated-prompt plan is also pinned:
 
-- 577 tokens including the class token;
+```text
+refav_repeated_prompt_log_plan.json
+SHA-256 cba73f6f34a5373bf3a5f69765b78f5eeebf48ad2ebdab38032a204cd7c60f85
+```
+
+The sources have different jobs. The scenario file supplies prompt-specific
+annotations. The tracker supplies possible deployed candidates. Argoverse 2
+poses, calibration, maps, and images supply the coordinate and camera
+information. No single source contains the complete experiment table.
+
+### 9.4 First tracker manifest and old baseline — measurement and historical warning
+
+The first pilot used a historical Valeo4Cast-derived tracker file and a
+front-center image policy. We built a nine-log repeated-prompt subset, exported
+fixed candidates, cached PE features, and ran deterministic and frozen pooled
+baselines. That work was useful for finding problems, but it is not the final
+benchmark because the source conversion and unknown-label handling were not yet
+settled.
+
+The corrected 500-group-per-split test numbers were:
+
+| method | test mAP |
+| --- | ---: |
+| pooled PE image + question | 0.0476 |
+| task ID + the same pooled image | 0.0576 |
+| tracker-score ranking | 0.1813 |
+| projected-box-area ranking | 0.1729 |
+
+The pooled model therefore did not pass the predeclared gate against simple
+controls. These numbers are retained as a historical warning. They are not
+evidence about patch tokens, Qwen, planning, safety, or real-time performance.
+
+### 9.5 PE smoke test — measurement
+
+The official `PE-Core-L14-336` interface was loaded on a real Argoverse 2 image
+using the dedicated PE environment. The observed output was:
+
+- 577 sequence tokens including the class token;
 - 576 patch tokens after removing the class token;
 - token width 1024;
 - pooled image width 1024;
 - text feature width 1024;
-- official CLIP text context length 32.
+- official CLIP text context length 32;
+- image preprocessing to 336×336, while the source camera image is 1550×2048.
 
-The PE image input is resized to 336×336 by the official transform. The original camera image is 1550×2048. These are different dimensions and must not be confused.
+This proves that the proposed patch-token input is technically available at the
+checkpoint tested. It does not prove that patch tokens contain useful task
+signal, and it does not measure end-to-end latency.
 
-### Corrected baseline smoke test
+### 9.6 Protocol diagnosis — measurement
 
-The first baseline run had two bugs. We kept its hashes for audit but marked them invalid. The corrected run fixed both problems and added checks for source image size, duplicate candidates, shared group images, feature alignment, split overlap, and pretrained PE metadata.
+The CPU-only diagnosis of the old 500-group artifacts found many unknown rows,
+split-dependent visibility differences, and strong tracker/geometry controls.
+It produced `PROTOCOL_REPAIR_REQUIRED`. That decision stopped patch-token
+training and triggered the source audit described below.
 
-The corrected 200-group smoke test and 500-group replication both failed the pass criterion: pooled PE did not beat the deterministic tracker/geometry controls. The corrected artifacts are recorded in the config and remain outside Git.
+### 9.7 Official-source replay and camera completion — code/infrastructure and measurement
 
-### Protocol-diagnosis gate
+The official RefAV tutorial was checked and the Le3DE2E source was replayed on
+the nine selected logs. Candidate construction occurred before target
+association. The replay used native tracker timestamps, fixed 50 m/ROI filters,
+all eligible tracker candidates, a fixed class map, one-to-one matching, and a
+fixed seven-camera order.
 
-The CPU-only diagnosis of the 500-group artifacts is complete. It confirms that
-the selected groups all contain a positive and a labeled negative, but the
-unknown-row rate is very high: 84.4% in train and about 89.8% in validation and
-test. Visibility is also split-dependent. Referred objects are more visible
-than labeled negatives in validation and test, while the direction is reversed
-in train. Deterministic controls remain much stronger than pooled PE on the
-held-out splits, including the score-and-size-matched diagnostic subset.
+The earlier local copy had only front-center images for most logs. To make the
+camera-coverage conclusion testable, we downloaded only the nearest image to
+each of the 32 native tracker timestamps for each of the seven ring cameras and
+nine logs:
 
-The diagnosis is recorded in `docs/refav_protocol_diagnosis.md` and in the
-external JSON artifact. Its decision is `PROTOCOL_REPAIR_REQUIRED`. This does
-not reject every possible RefAV study, but it blocks patch-token modeling until
-we define a label-independent candidate-pool repair.
+- 1,536 JPEG files;
+- approximately 0.55 GB;
+- maximum timestamp difference 32.7 ms;
+- no full 1 TB Argoverse sensor download;
+- per-file paths, sizes, and timestamp differences in
+  `camera_download_manifest_20261008.json`.
 
-## 10. What the current result means
+All seven cameras were present at the selected timestamps. This fixes the
+earlier missing-camera measurement. It does not mean that every camera frame in
+the full log was downloaded.
 
-The result supports these statements:
+### 9.8 Candidate-source comparison — measurement
 
-- The candidate-building pipeline can produce a reproducible table.
-- The PE checkpoint and patch-token interface can be loaded.
-- The current RefAV candidate pool contains strong geometry and tracker-related shortcuts.
-- The current small pooled-PE scorer does not beat those controls on the tested held-out logs.
-- Task ID did not show an advantage over natural-language PE text in this smoke test.
+The final audit created four comparable source views: official replay, causal
+all-tracker pool, historical pool, and a ground-truth oracle (plus the source
+comparison bookkeeping). It evaluated 2,880 prompt/timestamp groups. The
+external-object denominator is the set of groups where an external referred
+ground-truth object is actually present and eligible under the fixed range and
+ROI rules; this is different from the frequency of the event over all
+timestamps.
 
-The result does not support these statements:
+| source | external referred availability | positive projects into a camera | unknown candidate fraction |
+| --- | ---: | ---: | ---: |
+| official Le3DE2E replay | 68.6% at 2 m | 100.0% | 80.0% |
+| causal Le3DE2E pool | 66.9% at 2 m | 100.0% | 92.3% |
+| historical pool | 66.8% at 2 m | 100.0% | 92.3% |
+| ground-truth oracle | 100.0% | 100.0% | 0.0% |
 
-- Patch tokens are useless.
-- Natural language never helps.
-- DriveOne cannot work on any AV task.
-- The model is unsafe or safe.
-- The model is real time.
-- The candidate generator is good enough for deployment.
+For the official replay, conservative unique matching gives 71.7% availability
+at 1 m, 68.6% at 2 m, and 59.2% at 4 m. This 20.8-point change is above the
+10-point stability requirement. If ambiguous nearby assignments are counted as
+successful, availability is about 96.4%, 97.0%, and 97.3%; those optimistic
+values cannot be the main result because they do not establish a unique target
+identity.
 
-The present result is a reason to inspect the data protocol, not a reason to add more model capacity.
+The ground-truth oracle is a diagnostic upper bound. It proves that the
+annotations, pose conversion, calibration, and camera projection can support
+ the task. It is not a deployable candidate generator because it uses the
+ground-truth object list.
 
-## 11. The next step
+### 9.9 Deterministic controls in the final audit — measurement
 
-The protocol-diagnosis gate is complete. Its decision is
-**`PROTOCOL_REPAIR_REQUIRED`**.
+On the official replay control pool, the reported diagnostics were:
 
-The immediate next step is to design one candidate-pool repair that:
+| control | mAP | Recall@1 |
+| --- | ---: | ---: |
+| tracker confidence | 0.533 | 0.469 |
+| candidate distance | 0.446 | 0.469 |
+| projected box area | 0.144 | 0.124 |
+| category frequency | 0.152 | 0.088 |
+| random | 0.061 | 0.019 |
 
-1. never inspects the relevance label;
-2. keeps the same timestamp, image, and candidate policy for every method;
-3. keeps unknown candidates explicit;
-4. is deterministic and hashable; and
-5. does not turn the ranking task into hand-built positive/negative pairs.
+These are source diagnostics, not DriveOne model scores. The control summary
+contains 693 rankable groups, including the separate ego-vehicle scenario
+rows. For the external-object conclusion, coverage and matching statistics are
+reported separately. The controls are still useful because they show that the
+available tracker and geometry fields can rank labels far better than random.
 
-After rebuilding or re-exporting that repaired pool, rerun the deterministic
-controls. Only if the controls are no longer competitive should we run a
-second-seed pooled baseline and confidence-interval check. Patch tokens remain
-deferred until those checks pass.
+Unmatched tracker rows remain `UNMATCHED_TRACK`. For the binary ranking
+diagnostic only, they are treated as explicit tracker false positives so that a
+real candidate list can be scored. They are not rewritten as RefAV
+`OTHER_OBJECT`. This convention is a lower-bound/operational diagnostic, not
+proof that every unmatched row is semantically an `OTHER_OBJECT`.
 
-Do not start Qwen, distillation, PE-Spatial, four-frame input, six-camera scaling, DriveLM conversion, NAVSIM/GTRS trajectories, Waymo ranking, or deployment optimization before this gate is resolved.
+### 9.10 Current decision — interpretation
+
+The source audit ends with **`REFAV_ORACLE_ONLY`**. The available tracker pool
+does not currently provide a clean enough, uniquely associated, label-independent
+candidate interface for the central language-conditioned ranker claim. The
+oracle view is usable for geometry and implementation checks, but it must not
+be presented as a deployment-like benchmark.
+
+This conclusion is narrower than “RefAV is useless.” It means the present
+tracker/source conversion has not passed the candidate-validity gate. A future
+repair must either resolve the ambiguous association in a label-independent
+way or use a genuinely independent detector/tracker source. If neither exists,
+the RefAV branch should be documented as a negative finding and the project
+should pivot to a task with a fairer candidate interface.
+
+## 10. What the current evidence means
+
+### Statements supported by the work
+
+- The repository can load and audit the relevant RefAV/Argoverse artifacts.
+- The official PE checkpoint exposes usable pooled and patch-token features.
+- A reproducible candidate table and log-disjoint split plan can be built.
+- The old pilot contains strong tracker, distance, and geometry shortcuts.
+- The corrected pooled-PE baseline did not beat the historical controls.
+- The official replay has complete camera availability at the selected native
+  timestamps after the small camera download.
+- The ground-truth oracle can be projected successfully, so camera geometry is
+  not the current limiting factor.
+- The official tracker replay has incomplete conservative unique association
+  and a large unknown-row fraction.
+
+### Statements that remain unproven
+
+- Natural language improves generalization over task ID.
+- Patch tokens improve ranking over pooled PE.
+- One shared scorer works across answers, entities, and trajectories.
+- The formulation survives candidate-count, scene, city, planner, or dataset
+  shift.
+- Qwen3-VL-Reranker-2B is a fair autonomous-driving baseline or teacher.
+- A compact scorer has an end-to-end quality/latency/memory advantage.
+- Any offline ranker is safe, grounded in the deployment sense, a planner, or
+  real time.
+
+### Why the current decision is a data decision, not a model decision
+
+The official source audit did not compare patch tokens against pooled PE. It
+asked an earlier question: can the task provide a fair, complete candidate list
+with a well-defined target? The answer is currently “only with the oracle, and
+not yet with the available tracker.” Training a larger model now would mix
+candidate recall, ambiguous matching, tracker confidence, and visual reasoning
+into one number. That number would not tell us which part worked.
+
+## 11. The next step after this document
+
+The next action is a small, evidence-first source/association gate:
+
+1. Inspect the ambiguous official Le3DE2E matches per log and timestamp.
+2. Determine whether the ambiguity can be removed using only candidate-source
+   information available before labels: deterministic per-frame NMS,
+   track-consistency rules, class compatibility, and a fixed tie policy.
+3. Rebuild the candidate pool with that rule, without looking at RefAV mining
+   labels or ground-truth matching success.
+4. Recompute pool hashes, positive availability, unknown rates, projection
+   coverage, and tracker/distance/size controls.
+5. If no label-independent rule gives a stable, non-dominated pool, search for
+   an independent detector/tracker artifact. If that also fails, stop RefAV and
+   pivot.
+
+Only after this gate can we rerun the pooled model with a second seed and
+confidence intervals. Only if that result beats the strongest matched control
+by at least +5 Recall@1 points or +0.03 mAP, with no material calibration
+regression, should patch-token modeling begin.
+
+Do not start Qwen, distillation, PE-Spatial, four-frame input, six-camera
+scaling, DriveLM conversion, NAVSIM/GTRS trajectories, Waymo ranking, or
+deployment optimization before the candidate interface passes.
 
 ## 12. Reproduction commands
 
@@ -982,6 +1177,22 @@ conda run -n refav python scripts/train_refav_baselines.py \
 
 The learned baseline uses cached PE features. Therefore this command is a quality diagnostic, not an end-to-end latency measurement.
 
+### Rebuild this PDF
+
+The PDF is generated from this Markdown guide. The PDF itself is ignored by
+Git so that it is not pushed with the source repository. Install the small
+documentation dependency once, then run:
+
+```bash
+cd /data/sadegh/driveone
+python -m pip install -r requirements-docs.txt
+python scripts/render_project_guide_pdf.py \
+  docs/DriveOne_Project_Guide.md reports/DriveOne_Project_Guide.pdf
+```
+
+The renderer includes the source guide, tables, code blocks, page numbers, and
+the update date. It does not read the external datasets or model weights.
+
 ## 13. Evidence levels used in this project
 
 **Verified fact** means it was observed in an official source, local file, or completed run. Example: the PE run returned 576 patch tokens.
@@ -1014,53 +1225,205 @@ Can we define valid candidates?
 
 At the current point, the first three questions have exposed a serious shortcut and the pooled baseline has not passed. That is a useful research result. The next decision should be about the validity of the candidate protocol, not about adding a larger model.
 
-## 15. Official Le3DE2E repair result
+## 15. The final audit in technical detail
 
-The next protocol repair used the official RefAV scenario-mining annotations and
-the official Le3DE2E validation tracker.  The repair code is in
-`src/driveone/data/refav_repair.py` and
-`scripts/repair_refav_protocol.py`.  Candidate construction happens before
-matching, uses a fixed semantic taxonomy map, keeps unknown rows, and projects
-each candidate into all seven ring cameras.
+This section gives the details needed to reproduce or challenge the current
+stop decision. The code and JSON report are the primary record; the prose here
+explains how to read them.
 
-The nine-log output is stored outside Git at
-`/ehsan/m.sadegh/driveone_assets/refav/official/refav_le3de2e_repaired.feather`.
-It contains 333,255 unique candidate rows and 14,110 prompt/timestamp groups.
-Only 2,935 groups (20.8%) have a matched referred track.  Only 33.2% of
-matched referred rows project into at least one camera, and 90.5% of the
-prompt-labelled rows remain unknown.  Positive availability is 18.9%, 20.8%,
-and 21.8% at 1 m, 2 m, and 4 m matching thresholds.  The machine-readable assessment is
-`/ehsan/m.sadegh/driveone_assets/refav/official/refav_le3de2e_assessment.json`.
+### 15.1 Pinned inputs
 
-The decision remains **`PROTOCOL_REPAIR_REQUIRED`**.  This is a data-interface
-stop, not a model result.  Do not add patch tokens, temporal frames, Qwen,
-trajectories, or distillation until a candidate pool with adequate referred
-coverage and camera coverage exists.  If a label-independent repair cannot
-achieve that coverage, stop the RefAV branch and record the negative finding.
+The final audit used:
 
-## 16. Candidate-source audit result
+| input | purpose | pin |
+| --- | --- | --- |
+| RefAV repository | official conversion and tutorial | commit `5c5be6439ce59b61a31d56431a79a8a04bba33fa` |
+| `scenario_mining_val_annotations.feather` | prompt and ground-truth mining annotations | SHA-256 `e461e51057fdf347a11bdd60609e7de0b0bd8d0eb199314b3fd73c50106d48c9` |
+| `Le3DE2E_tracking_predictions_val.pkl` | official tracker candidates | SHA-256 `fd702ade8b640d325e5096e90f63cf1bf43f94a87a6aabfb52e71aa7b8470875` |
+| repeated-prompt plan | selected nine logs and split roles | SHA-256 `cba73f6f34a5373bf3a5f69765b78f5eeebf48ad2ebdab38032a204cd7c60f85` |
+| AV2 validation sensor/calibration/pose assets | projection and nearest-image lookup | external asset root, paths in the audit manifest |
 
-The next audit replayed the official RefAV Le3DE2E conversion on the nine
-native tracker timestamp grids. It also downloaded only the nearest frame for
-each of the seven ring cameras at those timestamps. This removed the earlier
-missing-camera problem from the measurement.
+The nine logs are three log-disjoint train/validation/test triplets. The
+selection came from repeated exact prompt strings, not from choosing logs with
+successful matches. Exact prompt repetition is useful for this pilot, but it
+is not a full semantic paraphrase holdout.
 
-For external-object prompts, the official replay provides 68.6% conservative
-referred-track availability at 2 m. It provides 71.7% at 1 m and 59.2% at 4
-m, so the conclusion changes by 20.8 percentage points. The ground-truth
-oracle reaches 100% availability and 100% camera projection. The oracle proves
-that the annotations and camera geometry are usable; it is not a deployable
-candidate generator.
+### 15.2 How the candidate pool is built
 
-Tracker confidence and candidate distance are strong controls on the official
-replay pool, reaching 0.533 and 0.446 mAP. These are data-source diagnostics,
-not DriveOne model results. Ego-vehicle prompts are reported separately from
-external object tracks. Unmatched rows remain `UNMATCHED_TRACK`; the ranking
-diagnostic treats them as explicit non-referred tracker false positives but
-does not relabel them `OTHER_OBJECT`.
+For every selected native tracker timestamp, the audit:
 
-The final decision for this branch is **`REFAV_ORACLE_ONLY`**. Do not add patch
-tokens, temporal frames, Qwen, distillation, trajectories, or deployment
-optimization. A new independent detector/tracker source is required before
-RefAV can support the central candidate-ranking claim. The detailed record is
-[`docs/refav_candidate_pool_decision.md`](refav_candidate_pool_decision.md).
+1. reads all tracker rows available at that timestamp;
+2. applies only fixed infrastructure filters: finite values, supported
+   geometry, valid timestamp, fixed 50 m range, and the fixed ROI;
+3. keeps every eligible row before any ground-truth association;
+4. sorts and hashes the candidate keys;
+5. associates the already-built pool with ground truth using the fixed class map,
+   one-to-one Hungarian matching, and a distance threshold;
+6. transfers `REFERRED_OBJECT`, `RELATED_OBJECT`, or `OTHER_OBJECT` only after
+   the association;
+7. leaves unmatched rows as `UNMATCHED_TRACK` or `AMBIGUOUS_MATCH`;
+8. projects every candidate into every available ring camera in a fixed order.
+
+This ordering is the main anti-leakage property. A candidate cannot enter or
+leave the pool because a RefAV prompt says that it is relevant.
+
+The pool hash uses sorted `(log_id, timestamp_ns, track_id)` keys plus declared
+candidate geometry fields. Prompts and target labels are not used to decide
+membership. The audit also checks duplicate keys and log-split overlap.
+
+### 15.3 Why matching is the weak point
+
+The tracker and the annotation describe the same scene in different ways. A
+tracker can create several nearby boxes for one annotated object, or miss an
+annotated object. A distance threshold alone cannot tell whether two nearby
+tracker rows are two objects or two hypotheses for one object. The audit
+therefore reports two views:
+
+- **conservative unique matching:** an object counts only when the assignment
+  is sufficiently unambiguous;
+- **optimistic matching:** an ambiguous nearby candidate is allowed to count.
+
+The optimistic view answers “is there probably some tracker row near the
+object?” The conservative view answers the harder ranking question “which exact
+candidate should receive the positive label?” The central benchmark needs the
+second answer. This is why the high optimistic availability does not repair the
+protocol by itself.
+
+At the official 2 m threshold, conservative external availability is 68.6%.
+At 1 m it is 71.7%, and at 4 m it is 59.2%. The 20.8-point range means the
+association result is sensitive to a reasonable threshold change. A future
+repair must fix this identity problem without using the target labels.
+
+### 15.4 Why the camera result changed
+
+The first repair used an incomplete local camera copy, so it reported many
+missing projections. That was a storage/input problem, not evidence that
+Argoverse camera geometry was unusable. The final audit downloaded the nearest
+frame for all seven ring cameras at each selected native tracker time. With
+those files present, the ground-truth oracle and the matched positives projected
+into at least one camera for 100% of eligible groups.
+
+This does not say every object is visible or unoccluded. A geometric cuboid
+intersection only says that the projected box has valid image support. Visual
+clarity and occlusion still require separate measurement.
+
+### 15.5 How to read the control scores
+
+Tracker confidence, distance, projected area, and category frequency are
+metadata/geometry rules. They are intentionally simple. Their role is to show
+whether the target label can be predicted without using image-language content.
+
+The official replay control report gives tracker confidence mAP 0.533 and
+candidate-distance mAP 0.446, compared with random mAP 0.061. The control
+summary includes 693 rankable groups and the official conversion's injected ego
+row. It is therefore a protocol diagnostic, not a final external-object model
+benchmark and not a direct replacement for the old 500-group test numbers.
+
+Score-matched and size-matched subsets are also diagnostics. Because the
+matching criteria use target-associated rows to create a balanced comparison,
+those subsets must never be called deployment-like candidate pools. They answer
+whether a shortcut remains after a controlled post-hoc comparison.
+
+### 15.6 Unknown labels and calibration
+
+An unmatched tracker row is not the same thing as a human-labelled
+`OTHER_OBJECT`. The manifest keeps that distinction. For a ranking diagnostic,
+unknown rows are treated as non-referred tracker false positives so that a
+candidate list can be ordered. This is an operational convention, not a claim
+about semantic truth.
+
+The final source audit therefore does not claim calibrated probabilities. The
+old learned pilot measured calibration on its labeled subset, but the repaired
+source has not yet had a valid learned run with a settled treatment of unknown
+and ambiguous rows. NLL, Brier, ECE, abstention, and reliability diagrams must
+be rerun only after the candidate/label contract is repaired.
+
+## 16. What is in the repository and what is outside it
+
+### Tracked in Git
+
+- `configs/refav_pilot.yaml`: pinned sources, rules, thresholds, and artifact
+  references.
+- `src/driveone/data/refav_contract.py`: schema and leakage checks.
+- `src/driveone/data/refav_tracker.py`: historical tracker-to-manifest adapter.
+- `src/driveone/data/refav_repair.py`: official-replay repair and matching.
+- `src/driveone/data/refav_candidate_sources.py`: source comparison and audit
+  calculations.
+- `src/driveone/eval/refav_metrics.py`: ranking controls and hard-negative
+  diagnostics.
+- `scripts/prepare_refav_tracker.py`: historical manifest command.
+- `scripts/repair_refav_protocol.py`: official Le3DE2E repair command.
+- `scripts/audit_refav_candidate_sources.py`: final source audit command.
+- `scripts/verify_refav.py`, `scripts/run_refav_controls.py`,
+  `scripts/train_refav_baselines.py`, and the PE scripts.
+- `tests/`: 31 small contract, matching, metric, split, verifier, and baseline
+  tests.
+- `docs/`: data contract, baseline record, protocol diagnosis, candidate-source
+  decision, and this guide.
+
+### Kept outside Git
+
+The large annotation and tracker files, AV2 sensor assets, camera JPEGs, PE
+weights, cached PE tensors, candidate Feather/JSONL exports, controls, and
+machine-readable audit reports are under
+`/ehsan/m.sadegh/driveone_assets/refav`. This keeps Git reviewable and prevents
+accidental commits of multi-gigabyte data or model weights.
+
+The final source-audit directory is:
+
+```text
+/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v3
+```
+
+Its JSON report SHA-256 is
+`0ad1d654d85c0e66cd82311cbcab7ebc75256db31e1e64d79b76e9273ecd69e0`. The
+manifest, per-log coverage table, prompt-holdout plan, source-comparison table,
+controls, and candidate Feather files are in the same directory.
+
+## 17. What has not been done yet
+
+The following items are deliberately **not** complete:
+
+- no patch-token DriveOne fusion model;
+- no second-seed learned result on the repaired official pool;
+- no valid Qwen direct baseline or distillation teacher;
+- no PE-Spatial or four-frame temporal experiment;
+- no six-camera learned model;
+- no DriveLM question conversion;
+- no NAVSIM/GTRS or Waymo trajectory ranking;
+- no closed-loop simulator experiment;
+- no end-to-end real-time measurement;
+- no safety claim;
+- no publication claim based on the current data audit.
+
+The absence of these experiments is intentional. They would be downstream of a
+candidate-interface decision that has not yet passed.
+
+## 18. Decision record and reading order
+
+The current decision is:
+
+```text
+REFAV_ORACLE_ONLY
+```
+
+Read the project in this order if you want to understand it without jumping
+between files:
+
+1. This guide, Sections 1–4, for the idea and vocabulary.
+2. Section 5, for the staged research gates.
+3. Section 6, for how raw files become candidate rows.
+4. Section 8, for the job of each source file and command.
+5. Section 9, for the chronological record and measured numbers.
+6. Section 15, for the final audit’s matching, projection, and control details.
+7. `docs/refav_candidate_pool_decision.md`, for the short machine-audited
+   decision record.
+8. `configs/refav_pilot.yaml`, for pinned inputs and thresholds.
+9. `src/driveone/data/refav_candidate_sources.py` and
+   `scripts/audit_refav_candidate_sources.py`, when you want to inspect the
+   latest implementation.
+
+The next implementation should either produce a label-independent repaired
+pool or demonstrate that this is not possible with the available RefAV source.
+Until one of those outcomes is established, the correct action is to preserve
+this negative/diagnostic finding and avoid spending compute on a larger model.

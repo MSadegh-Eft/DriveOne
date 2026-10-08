@@ -25,6 +25,7 @@ wandb/
 .DS_Store
 .vscode/
 .idea/
+.pdf_tools/
 
 # Locally generated due-diligence reports
 reports/
