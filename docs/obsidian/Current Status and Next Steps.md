@@ -1,5 +1,28 @@
 # Current Status and Next Steps
 
+## Latest gate: 2026-10-08
+
+The source-level candidate protocol passed its data checks. We then ran the
+corrected frozen pooled-PE baseline on the official Le3DE2E causal pool with
+seeds 0 and 1. This model gate failed:
+
+- pooled PE test mAP: 0.0668 (seed 0), 0.0569 (seed 1);
+- task ID test mAP: 0.0787, 0.0718;
+- metadata-only test mAP: 0.0830, 0.0810;
+- fixed front-center projected-area control: 0.1964 mAP;
+- pooled PE seed-0 ECE: 0.1583 versus 0.0468 for task ID.
+
+The source pool is still label-independent and hash-stable. Unknown candidates
+remain in the ranking pool. All-camera positive projection is 100% in the
+audit, but the fixed front-center image contains a projected positive in only
+46.0% of test positive rows. The full explanation is in
+`docs/refav_pooled_baseline_gate.md`; the machine-readable report is kept
+outside Git with the data.
+
+**Current decision: `POOLED_BASELINE_GATE_FAILED`.** Do not add patch tokens,
+Qwen, temporal frames, trajectories, or distillation. First choose between a
+fair fixed multi-camera input redesign and stopping the RefAV branch.
+
 ## What has been completed
 
 - The repository was created as an isolated DriveOne project.

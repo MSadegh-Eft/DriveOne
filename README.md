@@ -8,16 +8,22 @@ For a complete explanation in simple English, start with the [DriveOne Project G
 
 ## Current next step
 
-The evaluation-correctness gate now passes on the existing nine-log candidate
-pool. It separates global assignment certainty from local nearby matches,
-preserves unknown labels, excludes synthetic ego rows from external controls,
-and keeps the learned-model gate separate. The current decision is
-`POOLED_BASELINE_GATE_READY`.
+The evaluation-correctness gate passed on the nine-log candidate pool. It
+separates global assignment certainty from local nearby matches, preserves
+unknown labels, excludes synthetic ego rows from external controls, and keeps
+the learned-model gate separate. The corrected two-seed frozen pooled-PE gate
+has now run and returns `POOLED_BASELINE_GATE_FAILED`.
 
-The next experiment is the frozen pooled-PE baseline gate using the causal
-all-tracker pool. Run one seed first, then a second seed only after the first
-run is reproducible. Do not add patch tokens, Qwen, temporal frames,
-trajectories, or distillation yet.
+Pooled PE reached 0.0668/0.0569 test mAP for seeds 0/1. Task ID reached
+0.0787/0.0718, metadata-only reached 0.0830/0.0810, and fixed front-center
+projected area reached 0.1964. Pooled PE also had worse seed-0 calibration
+than task ID. Do not add patch tokens, Qwen, temporal frames, trajectories, or
+distillation yet.
+
+The full gate record is in
+[`docs/refav_pooled_baseline_gate.md`](docs/refav_pooled_baseline_gate.md).
+The detailed JSON report and large result files remain outside Git under
+`/ehsan/m.sadegh/driveone_assets/refav/refav_baseline_gate_v1/`.
 
 The repair entry point is:
 

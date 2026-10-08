@@ -20,6 +20,26 @@ The machine-readable report is outside Git:
 SHA-256 52aff5c738bd674969c302f0fde3572b2e21e134a99e843b1182f7290157e9e7
 ```
 
+### Later model gate (2026-10-08)
+
+The data decision above authorized the corrected frozen pooled-PE test. That
+test has now run with two seeds and failed:
+
+```text
+POOLED_BASELINE_GATE_FAILED
+```
+
+Pooled PE test mAP was 0.0668/0.0569 for seeds 0/1, below task ID
+0.0787/0.0718, metadata-only 0.0830/0.0810, and fixed front-center
+projected-area control 0.1964. Pooled PE also had worse seed-0 ECE than task
+ID. The detailed record is
+`docs/refav_pooled_baseline_gate.md`; the JSON result remains outside Git under
+`/ehsan/m.sadegh/driveone_assets/refav/refav_baseline_gate_v1/`.
+
+This does not undo the data gate. It means that the current fixed-view pooled
+representation has not shown a useful gain. Patch-token, Qwen, temporal,
+trajectory, and distillation work remain deferred.
+
 The previous v3 report remains unchanged. Its conclusion was too conservative
 because it treated every locally ambiguous match as an unknown label and mixed
 synthetic ego rows into the external controls. It is retained as an audit

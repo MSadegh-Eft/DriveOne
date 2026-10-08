@@ -79,10 +79,18 @@ availability at the 2 m threshold. Its 1 m, 2 m, and 4 m availability is
 This does not mean the model has passed: the pooled-PE and task-ID models still
 need to be rerun on the corrected external groups.
 
-The current decision is **`POOLED_BASELINE_GATE_READY`**. The next step is one
-reproducible frozen pooled-PE baseline seed, followed by a second seed only if
-the first result is stable. Patch tokens remain paused until that model gate
-passes.
+The corrected frozen pooled-PE baseline has now run with two seeds. On the test
+split, pooled PE reaches 0.0668/0.0569 mAP for seeds 0/1. Task ID reaches
+0.0787/0.0718, metadata-only reaches 0.0830/0.0810, and fixed front-center
+projected area reaches 0.1964. Pooled PE also has worse seed-0 ECE than task
+ID (0.1583 versus 0.0468). The model gate therefore fails:
+**`POOLED_BASELINE_GATE_FAILED`**. Patch tokens remain paused.
+
+The source candidate pool still passes its data checks. However, fixed
+front-center projection covers only 46.0% of test positive rows, while the
+seven-camera audit covers essentially all matched positives. The next decision
+is whether to define a fair multi-camera input or stop the RefAV branch; it is
+not to add a larger model.
 
 ## 2. Why we are moving slowly
 
@@ -1356,8 +1364,8 @@ baseline, after the label policy is fixed for that run.
 - `scripts/audit_refav_candidate_sources.py`: final source audit command.
 - `scripts/verify_refav.py`, `scripts/run_refav_controls.py`,
   `scripts/train_refav_baselines.py`, and the PE scripts.
-- `tests/`: 35 small contract, matching, metric, split, verifier, and baseline
-  tests.
+- `tests/`: 43 small contract, matching, metric, split, verifier, bootstrap,
+  adapter, and baseline tests.
 - `docs/`: data contract, baseline record, protocol diagnosis, candidate-source
   decision, and this guide.
 
@@ -1385,7 +1393,7 @@ controls, and candidate Feather files are in the same directory.
 The following items are deliberately **not** complete:
 
 - no patch-token DriveOne fusion model;
-- no second-seed learned result on the corrected causal pool;
+- no patch-token model on the corrected causal pool;
 - no valid Qwen direct baseline or distillation teacher;
 - no PE-Spatial or four-frame temporal experiment;
 - no six-camera learned model;
@@ -1403,8 +1411,22 @@ The absence of these experiments is intentional. They are downstream of the corr
 The current decision is:
 
 ```text
-POOLED_BASELINE_GATE_READY
+POOLED_BASELINE_GATE_FAILED
 ```
+
+The data construction gate passed, but the first learned-model gate did not.
+The two-seed frozen pooled-PE test used the official Le3DE2E tracker pool. On
+the test split, pooled PE reached 0.0668 mAP (seed 0) and 0.0569 mAP (seed 1).
+Task ID reached 0.0787 and 0.0718; metadata-only reached 0.0830 and 0.0810;
+fixed front-center projected area reached 0.1964. Pooled PE also had worse
+seed-0 ECE than task ID (0.1583 versus 0.0468). These values are operational
+metrics: unknown candidates remain in the ranking pool.
+
+The source candidate pool is still reproducible and label-independent. The
+main limitation is visual coverage: all seven cameras project essentially all
+matched positives, but a fixed front-center image projects only 46.0% of test
+positive rows. The main log split also reuses prompts across logs, so the small
+`joint_holdout_eligible` subset is the only prompt-holdout diagnostic.
 
 Read the project in this order if you want to understand it without jumping
 between files:
@@ -1415,13 +1437,17 @@ between files:
 4. Section 8, for the job of each source file and command.
 5. Section 9, for the chronological record and measured numbers.
 6. Section 15, for the final audit’s matching, projection, and control details.
-7. `docs/refav_candidate_pool_decision.md`, for the short machine-audited
+7. `docs/refav_pooled_baseline_gate.md`, for the latest learned-model gate and
+   its decision.
+8. `docs/refav_candidate_pool_decision.md`, for the short machine-audited
    decision record.
-8. `configs/refav_pilot.yaml`, for pinned inputs and thresholds.
-9. `src/driveone/data/refav_candidate_sources.py` and
+9. `configs/refav_pilot.yaml`, for pinned inputs and thresholds.
+10. `src/driveone/data/refav_candidate_sources.py` and
    `scripts/audit_refav_candidate_sources.py`, when you want to inspect the
    latest implementation.
 
-The next implementation should run the corrected frozen pooled-PE baseline. If
-that model gate passes, patch-token fusion becomes the next controlled comparison.
-If it fails, preserve the negative finding and do not expand the architecture.
+The next implementation should not add patch tokens yet. First decide whether
+the task should use a fixed multi-camera representation, or whether RefAV
+should be recorded as a negative branch and replaced by a fairer candidate
+interface. The machine-readable report is `baseline_gate_report.json` in the
+external asset directory; it stays outside Git with the data and checkpoints.

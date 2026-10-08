@@ -38,8 +38,11 @@ log-disjoint repeated-prompt manifest. The frozen-PE baseline was tested on
 evaluator was later corrected. The corrected CPU-only audit preserves unknown
 labels, separates global assignment ties from local nearby matches, excludes
 synthetic ego rows from external controls, and reports
-`POOLED_BASELINE_GATE_READY`. The next experiment is the corrected frozen
-pooled-PE baseline.
+`POOLED_BASELINE_GATE_FAILED`. The corrected frozen pooled-PE baseline has now
+run with two seeds. Pooled PE did not beat task ID, metadata-only, or the
+fixed projected-area control, so patch-token work is still deferred. Read the
+[pooled baseline gate](../refav_pooled_baseline_gate.md) for the numbers and
+the next decision.
 
 The PE smoke test found 576 visual patch tokens of width 1024, a
 1024-dimensional pooled image output, and a 1024-dimensional text output for

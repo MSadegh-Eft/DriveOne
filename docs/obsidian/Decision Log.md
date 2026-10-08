@@ -1,5 +1,23 @@
 # Decision Log
 
+## 2026-10-08 — Frozen pooled-PE gate failed
+
+**Decision:** Do not add patch tokens or expand to Qwen, temporal frames,
+trajectories, or distillation.
+
+**Evidence:** On the corrected official Le3DE2E causal pool, pooled PE test mAP
+was 0.0668 (seed 0) and 0.0569 (seed 1). Task ID was 0.0787/0.0718,
+metadata-only was 0.0830/0.0810, and fixed front-center projected area was
+0.1964. Pooled PE also had worse seed-0 ECE than task ID. The source pool
+itself is label-independent and hash-stable, but fixed front-center projection
+covers only 46.0% of test positive rows.
+
+**Next reversal condition:** Only reconsider patch tokens after defining a fair
+multi-camera candidate representation and rerunning a matched pooled baseline,
+or after choosing a different candidate interface with adequate visual
+coverage. The machine-readable decision is
+`POOLED_BASELINE_GATE_FAILED`.
+
 ## 2026-10-03 — Start with a feasibility gate
 
 **Decision:** Build a RefAV referred-track ranking gate before implementing the full DriveOne scorer, temporal variants, trajectory work, or distillation.

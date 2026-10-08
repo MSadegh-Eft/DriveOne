@@ -12,7 +12,7 @@ This page answers two questions: **what should I read?** and **why are we doing 
 | 3. Check PE | Run `smoke_test_pe.py` with the official PE environment | We need to know what tensors the backbone actually returns before writing a fusion model | Shape/configuration report | Patch and pooled paths are both available and measured |
 | 4. Run controls | Compare random, tracker-score, candidate geometry, projected area, and category-frequency ranking | These controls tell us whether the candidate pool already contains an easy answer | Control metrics and coverage report | Shortcut controls are recorded and hard negatives are defined |
 | 5. Shortcut audit | Add score-matched and size-matched hard negatives on repeated prompt families | The first controls found tracker-confidence and projected-size shortcuts | Shortcut report and fixed hard-negative protocol | No forbidden shortcut explains the planned comparison |
-| 6. Frozen baseline gate | Run candidate-only, metadata-only, task-ID, and pooled-PE controls on fixed 200- and 500-group subsets | We must know whether simple controls already explain the result | Reproducible baseline and shortcut report | Pooled PE beats the strongest deterministic control, or a concrete protocol repair is made |
+| 6. Frozen baseline gate | Run candidate-only, metadata-only, task-ID, and pooled-PE controls on the full 2,880-group causal pool | We must know whether simple controls already explain the result | Two-seed baseline and shortcut report | Pooled PE beats the strongest deterministic control, or the branch is stopped |
 | 7. Minimal DriveOne | Add frozen PE patch tokens, one question encoder, one fusion block, and one scorer | This is the cheapest test of the central mechanism after the pooled gate | Two-seed ranking result | Patch model beats pooled PE and task ID on held-out logs/templates by the preregistered margin |
 | 8. Stress the result | Add candidate-count shift and log/template holdout | A gain only in the easy pilot is weak evidence | Shift and calibration report | The gain survives the planned shifts |
 | 9. Expand carefully | Only then consider more frames, PE-Spatial, other cameras, or other datasets | Each extension changes compute or task semantics and needs its own baseline | Separate evaluation track | The added question is justified by the previous result |
@@ -22,11 +22,13 @@ This page answers two questions: **what should I read?** and **why are we doing 
 
 Stages 0 through 6 produced the fixed manifest, audit, PE interface report,
 deterministic controls, and historical frozen-PE baseline. The evaluator-
-correctness gate now returns `POOLED_BASELINE_GATE_READY`: candidate hashes are
-unchanged, external availability is about 99% at 2 m, and ego rows are excluded
-from external controls. The project is between the corrected data gate and the
-pooled model gate. Run one corrected pooled baseline seed, then a second seed
-only if the first is reproducible. Patch tokens remain deferred.
+correctness gate passed: candidate hashes are unchanged, external availability
+is about 99% at 2 m conditional on an eligible event, and ego rows are excluded
+from external controls. The full two-seed pooled model gate then failed. Pooled
+PE is below task ID, metadata-only, and projected-area controls, and the fixed
+front-center view covers only 46% of test positive rows. Patch tokens remain
+deferred while we decide whether a fair multi-camera input is needed or RefAV
+should be stopped.
 
 ## The file reading order
 
