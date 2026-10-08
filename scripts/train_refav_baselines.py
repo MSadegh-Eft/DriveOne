@@ -121,27 +121,53 @@ def average_precision(labels: list[int | None], scores: list[float]) -> float | 
 def ranking_metrics(groups: dict[tuple[str, str, int], list[dict[str, Any]]], score_map: dict[int, float]) -> dict[str, float | int | None]:
     aps = []
     recalls = []
+    labeled_aps = []
+    labeled_recalls = []
     labeled_scores = []
     labeled_labels = []
+    positive_count = 0
+    negative_count = 0
+    unknown_count = 0
     for rows in groups.values():
-        labels = [int(row["label"]) if row.get("label") is not None else -1 for row in rows]
+        labels = [int(row["label"]) if row.get("label") is not None else None for row in rows]
         scores = [float(score_map[id(row)]) for row in rows]
         ap = average_precision(labels, scores)
+        positive_count += sum(label == POSITIVE for label in labels)
+        negative_count += sum(label in NEGATIVES for label in labels)
+        unknown_count += sum(label is None for label in labels)
         if ap is not None:
             aps.append(ap)
             order = sorted(range(len(scores)), key=lambda index: (-scores[index], index))
             recalls.append(float(labels[order[0]] == POSITIVE))
-            for row, label in zip(rows, labels):
-                if label in (POSITIVE, *NEGATIVES):
-                    labeled_scores.append(float(score_map[id(row)]))
-                    labeled_labels.append(float(label == POSITIVE))
+        labeled_indices = [index for index, label in enumerate(labels) if label in (POSITIVE, *NEGATIVES)]
+        if labeled_indices:
+            labeled_group_labels = [labels[index] for index in labeled_indices]
+            labeled_group_scores = [scores[index] for index in labeled_indices]
+            labeled_ap = average_precision(labeled_group_labels, labeled_group_scores)
+            if labeled_ap is not None:
+                labeled_aps.append(labeled_ap)
+                labeled_order = sorted(range(len(labeled_group_scores)), key=lambda index: (-labeled_group_scores[index], index))
+                labeled_recalls.append(float(labeled_group_labels[labeled_order[0]] == POSITIVE))
+            for label, score in zip(labeled_group_labels, labeled_group_scores):
+                labeled_scores.append(float(score))
+                labeled_labels.append(float(label == POSITIVE))
     if not aps:
-        return {"group_count": len(groups), "rankable_group_count": 0, "mAP": None, "Recall@1": None}
+        return {
+            "group_count": len(groups), "rankable_group_count": 0, "mAP": None, "Recall@1": None,
+            "labeled_only_mAP": float(np.mean(labeled_aps)) if labeled_aps else None,
+            "labeled_only_Recall@1": float(np.mean(labeled_recalls)) if labeled_recalls else None,
+            "positive_count": positive_count, "negative_count": negative_count, "unknown_count": unknown_count,
+        }
     output: dict[str, float | int | None] = {
         "group_count": len(groups),
         "rankable_group_count": len(aps),
         "mAP": float(np.mean(aps)),
         "Recall@1": float(np.mean(recalls)),
+        "labeled_only_mAP": float(np.mean(labeled_aps)) if labeled_aps else None,
+        "labeled_only_Recall@1": float(np.mean(labeled_recalls)) if labeled_recalls else None,
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "unknown_count": unknown_count,
     }
     logits = np.asarray(labeled_scores, dtype=float)
     targets = np.asarray(labeled_labels, dtype=float)
@@ -176,6 +202,7 @@ def validate_splits(rows_by_split: dict[str, list[dict[str, Any]]]) -> None:
             raise ValueError(f"Empty split: {split}")
         seen_candidates = set()
         group_images = {}
+        group_holdout = {}
         for row in rows:
             log = str(row["log_id"])
             if log in seen_logs and seen_logs[log] != split:
@@ -190,6 +217,10 @@ def validate_splits(rows_by_split: dict[str, list[dict[str, Any]]]) -> None:
             if group in group_images and group_images[group] != image:
                 raise ValueError(f"Candidates in {group} do not share one image")
             group_images[group] = image
+            holdout = (str(row.get("prompt_split", "")), bool(row.get("joint_holdout_eligible", False)))
+            if group in group_holdout and group_holdout[group] != holdout:
+                raise ValueError(f"Prompt holdout metadata differs inside {group}")
+            group_holdout[group] = holdout
             if row.get("label") not in (None, 0, 1, 2):
                 raise ValueError("Labels must be referred=0, related=1, other=2, or null")
 
@@ -218,13 +249,50 @@ def stratified_metrics(groups, scores):
         for log in sorted({key[0] for key in groups})
     }
     bins = {"1-64": (1, 64), "65-128": (65, 128), "129-256": (129, 256), "257+": (257, math.inf)}
+    def property_metrics(predicate):
+        return ranking_metrics({key: rows for key, rows in groups.items() if predicate(rows)}, scores)
+
     return {
         "per_log": per_log,
         "candidate_count": {
             name: ranking_metrics({key: rows for key, rows in groups.items() if low <= len(rows) <= high}, scores)
             for name, (low, high) in bins.items()
         },
+        "joint_holdout": property_metrics(lambda rows: bool(rows[0].get("joint_holdout_eligible", False))),
+        "non_joint_holdout": property_metrics(lambda rows: not bool(rows[0].get("joint_holdout_eligible", False))),
+        "prompt_split": {
+            value: property_metrics(lambda rows, value=value: str(rows[0].get("prompt_split", "")) == value)
+            for value in sorted({str(rows[0].get("prompt_split", "")) for rows in groups.values()})
+        },
     }
+
+
+def per_group_metrics(groups, scores):
+    """Return compact per-group values for paired seed/bootstrap analysis."""
+    output = []
+    for key, rows in groups.items():
+        labels = [int(row["label"]) if row.get("label") is not None else None for row in rows]
+        values = [float(scores[id(row)]) for row in rows]
+        order = sorted(range(len(values)), key=lambda index: (-values[index], index))
+        ap = average_precision(labels, values)
+        labeled_indices = [index for index, label in enumerate(labels) if label in (POSITIVE, *NEGATIVES)]
+        labeled_labels = [labels[index] for index in labeled_indices]
+        labeled_values = [values[index] for index in labeled_indices]
+        labeled_order = sorted(range(len(labeled_values)), key=lambda index: (-labeled_values[index], index))
+        output.append({
+            "log_id": str(key[0]), "prompt": str(key[1]), "timestamp_ns": int(key[2]),
+            "prompt_split": str(rows[0].get("prompt_split", "")),
+            "joint_holdout_eligible": bool(rows[0].get("joint_holdout_eligible", False)),
+            "candidate_count": len(rows),
+            "positive_count": sum(label == POSITIVE for label in labels),
+            "negative_count": sum(label in NEGATIVES for label in labels),
+            "unknown_count": sum(label is None for label in labels),
+            "average_precision": ap,
+            "recall_at_1": float(labels[order[0]] == POSITIVE) if labels and sum(label == POSITIVE for label in labels) else None,
+            "labeled_average_precision": average_precision(labeled_labels, labeled_values) if labeled_values else None,
+            "labeled_recall_at_1": float(labeled_labels[labeled_order[0]] == POSITIVE) if labeled_values and sum(label == POSITIVE for label in labeled_labels) else None,
+        })
+    return output
 
 
 def build_inputs(
@@ -325,25 +393,33 @@ def main() -> int:
     torch.use_deterministic_algorithms(True)
     seed_everything(args.seed)
     device = torch.device(args.device)
+    read_start = time.perf_counter()
     rows_by_split = {name: read_jsonl(path) for name, path in [("train", args.train), ("validation", args.validation), ("test", args.test)]}
+    read_seconds = time.perf_counter() - read_start
     validate_splits(rows_by_split)
     groups_by_split = {name: group_rows(rows) for name, rows in rows_by_split.items()}
     all_rows = [row for rows in rows_by_split.values() for row in rows]
     categories = sorted({str(row["raw_tracker_label"]) for row in rows_by_split["train"]})
     category_ids = {name: index + 1 for index, name in enumerate(categories)}
+    image_start = time.perf_counter()
     width, height = source_image_size(all_rows)
+    image_validation_seconds = time.perf_counter() - image_start
     if (args.image_width is not None and args.image_width != width) or (args.image_height is not None and args.image_height != height):
         parser.error(f"Image-size assertion disagrees with actual files: {width}x{height}")
     train_prompts = sorted({str(row["prompt"]) for row in rows_by_split["train"]})
     prompt_ids = {prompt: index + 1 for index, prompt in enumerate(train_prompts)}
     prompt_ids["<unk>"] = 0
+    feature_start = time.perf_counter()
     feature_payload = torch.load(args.features, map_location="cpu", weights_only=True)
+    feature_load_seconds = time.perf_counter() - feature_start
     if feature_payload.get("config") != "PE-Core-L14-336" or feature_payload.get("pretrained") is not True:
         raise ValueError("This control protocol requires pretrained PE-Core-L14-336 features")
+    input_start = time.perf_counter()
     inputs = {
         name: build_inputs(rows, category_ids, prompt_ids, feature_payload, device, width, height)
         for name, rows in rows_by_split.items()
     }
+    input_build_seconds = time.perf_counter() - input_start
 
     results: dict[str, Any] = {
         "protocol": {
@@ -352,16 +428,23 @@ def main() -> int:
             "loss": "BCE on labeled candidates only",
             "unknown_candidates": "retained at evaluation and omitted from training loss",
             "device": str(device),
-            "version": "refav-baseline-smoke-v2",
+            "version": "refav-baseline-gate-v1",
             "source_image_size": [width, height],
             "dtype": "float32",
             "torch_version": str(torch.__version__),
             "threads": args.threads,
+            "timings_seconds": {
+                "jsonl_read": read_seconds,
+                "image_validation": image_validation_seconds,
+                "feature_load": feature_load_seconds,
+                "input_build": input_build_seconds,
+            },
             "script_sha256": sha256_file(Path(__file__)),
             "features_sha256": sha256_file(args.features),
             "inputs": {name: {"path": str(path.resolve()), "sha256": sha256_file(path)} for name, path in (("train", args.train), ("validation", args.validation), ("test", args.test))},
             "category_vocabulary": "raw tracker categories fitted on training rows only; unknown=0",
-            "query_holdout": "exact prompt overlap exists; this is not a template-disjoint test",
+            "query_holdout": "joint_holdout_eligible groups are reported separately; the main split remains log-disjoint with exact prompt overlap across logs",
+            "candidate_order": "deterministically shuffled within each group before every model sees the rows",
             "task_id_conditioning": "pooled PE image plus learned prompt ID",
             "pooled_pe_conditioning": "pooled PE image plus PE text",
             "matching_limit": "context and scorer widths match; total trainable parameter counts differ",
@@ -375,11 +458,14 @@ def main() -> int:
         start = time.perf_counter()
         train_one(model, groups_by_split["train"], inputs["train"], args.epochs, args.seed)
         elapsed = time.perf_counter() - start
+        score_start = time.perf_counter()
         model_scores = {split: score_groups(model, groups_by_split[split], inputs[split]) for split in ("train", "validation", "test")}
+        score_seconds = time.perf_counter() - score_start
         model_results = {split: ranking_metrics(groups_by_split[split], model_scores[split]) for split in ("train", "validation", "test")}
         results["models"][mode] = {
-            "train_seconds": elapsed, "metrics": model_results,
+            "train_seconds": elapsed, "score_seconds": score_seconds, "metrics": model_results,
             "stratified_metrics": {split: stratified_metrics(groups_by_split[split], model_scores[split]) for split in ("validation", "test")},
+            "per_group_metrics": {split: per_group_metrics(groups_by_split[split], model_scores[split]) for split in ("validation", "test")},
             "parameter_count": sum(parameter.numel() for parameter in model.parameters()),
         }
     args.output.parent.mkdir(parents=True, exist_ok=True)

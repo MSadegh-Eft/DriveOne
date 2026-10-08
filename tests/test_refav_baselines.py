@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from scripts.train_refav_baselines import CandidateScorer, average_precision, box_features
+from scripts.train_refav_baselines import CandidateScorer, average_precision, box_features, ranking_metrics, stratified_metrics
 
 
 class RefAVBaselineHelperTests(unittest.TestCase):
@@ -35,6 +35,39 @@ class RefAVBaselineHelperTests(unittest.TestCase):
         pooled_pe = CandidateScorer(12, 2, "pooled_pe", 2)
         self.assertEqual(task_id(candidate, category, prompt_id, image, text).shape, (2,))
         self.assertEqual(pooled_pe(candidate, category, prompt_id, image, text).shape, (2,))
+
+    def test_operational_metrics_keep_unknown_rows_but_labeled_only_metrics_drop_them(self):
+        rows = [
+            {"log_id": "a", "prompt": "p", "timestamp_ns": 1, "label": None},
+            {"log_id": "a", "prompt": "p", "timestamp_ns": 1, "label": 0},
+            {"log_id": "a", "prompt": "p", "timestamp_ns": 1, "label": 1},
+        ]
+        groups = {("a", "p", 1): rows}
+        scores = {id(rows[0]): 0.9, id(rows[1]): 0.8, id(rows[2]): 0.1}
+        result = ranking_metrics(groups, scores)
+        self.assertAlmostEqual(result["mAP"], 0.5)
+        self.assertEqual(result["labeled_only_mAP"], 1.0)
+        self.assertEqual(result["unknown_count"], 1)
+
+    def test_candidate_count_and_prompt_holdout_strata_are_separate(self):
+        short = [
+            {"log_id": "a", "prompt": "p", "timestamp_ns": 1, "label": 0, "joint_holdout_eligible": True, "prompt_split": "validation"},
+            {"log_id": "a", "prompt": "p", "timestamp_ns": 1, "label": 1, "joint_holdout_eligible": True, "prompt_split": "validation"},
+        ]
+        long = [
+            {"log_id": "b", "prompt": "q", "timestamp_ns": 2, "label": 0, "joint_holdout_eligible": False, "prompt_split": "test"}
+            for _ in range(70)
+        ]
+        long[1]["label"] = 1
+        groups = {("a", "p", 1): short, ("b", "q", 2): long}
+        scores = {id(row): (1.0 if row["label"] == 0 else 0.0) for rows in groups.values() for row in rows}
+        strata = stratified_metrics(groups, scores)
+        self.assertEqual(strata["candidate_count"]["1-64"]["group_count"], 1)
+        self.assertEqual(strata["candidate_count"]["65-128"]["group_count"], 1)
+        self.assertEqual(strata["joint_holdout"]["group_count"], 1)
+        self.assertEqual(strata["non_joint_holdout"]["group_count"], 1)
+        self.assertEqual(strata["prompt_split"]["validation"]["group_count"], 1)
+        self.assertEqual(strata["prompt_split"]["test"]["group_count"], 1)
 
 
 if __name__ == "__main__":
