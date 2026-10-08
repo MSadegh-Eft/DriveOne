@@ -32,6 +32,16 @@ diagnostics.  They are not the final source for the protocol gate.
 
 The exact reading and experiment order is in [`docs/obsidian/Development Roadmap.md`](docs/obsidian/Development%20Roadmap.md).
 
+The official Le3DE2E candidate-source audit is complete. It reproduces the
+official RefAV tracker conversion and uses all seven camera views at the
+native tracker timestamps. The official replay provides 68.6% conservative
+external referred-object availability, while the ground-truth oracle provides
+100%. Tracker confidence and candidate distance remain strong controls. The
+decision is `REFAV_ORACLE_ONLY`: the annotations and cameras are usable for an
+oracle-candidate diagnostic, but the available tracker is not a fair
+deployment-like candidate source. See
+[`docs/refav_candidate_pool_decision.md`](docs/refav_candidate_pool_decision.md).
+
 The six-log deterministic control run is available outside Git:
 
 ```bash

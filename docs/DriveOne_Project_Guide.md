@@ -1037,3 +1037,30 @@ stop, not a model result.  Do not add patch tokens, temporal frames, Qwen,
 trajectories, or distillation until a candidate pool with adequate referred
 coverage and camera coverage exists.  If a label-independent repair cannot
 achieve that coverage, stop the RefAV branch and record the negative finding.
+
+## 16. Candidate-source audit result
+
+The next audit replayed the official RefAV Le3DE2E conversion on the nine
+native tracker timestamp grids. It also downloaded only the nearest frame for
+each of the seven ring cameras at those timestamps. This removed the earlier
+missing-camera problem from the measurement.
+
+For external-object prompts, the official replay provides 68.6% conservative
+referred-track availability at 2 m. It provides 71.7% at 1 m and 59.2% at 4
+m, so the conclusion changes by 20.8 percentage points. The ground-truth
+oracle reaches 100% availability and 100% camera projection. The oracle proves
+that the annotations and camera geometry are usable; it is not a deployable
+candidate generator.
+
+Tracker confidence and candidate distance are strong controls on the official
+replay pool, reaching 0.533 and 0.446 mAP. These are data-source diagnostics,
+not DriveOne model results. Ego-vehicle prompts are reported separately from
+external object tracks. Unmatched rows remain `UNMATCHED_TRACK`; the ranking
+diagnostic treats them as explicit non-referred tracker false positives but
+does not relabel them `OTHER_OBJECT`.
+
+The final decision for this branch is **`REFAV_ORACLE_ONLY`**. Do not add patch
+tokens, temporal frames, Qwen, distillation, trajectories, or deployment
+optimization. A new independent detector/tracker source is required before
+RefAV can support the central candidate-ranking claim. The detailed record is
+[`docs/refav_candidate_pool_decision.md`](refav_candidate_pool_decision.md).

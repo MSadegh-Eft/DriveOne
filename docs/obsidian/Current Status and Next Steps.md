@@ -176,3 +176,31 @@ temporal frames, trajectories, or distillation.
 - `a75b1b8` — leakage-aware deterministic control suite.
 - `19c8859` — frozen-PE subset export, feature extraction, and baseline controls.
 - `3bd966b` — baseline helper tests for fixed feature shape and unknown-row ranking.
+
+## Candidate-source audit result
+
+The official Le3DE2E conversion was replayed on the nine native timestamp
+grids. The city-to-ego conversion matched exactly. We downloaded only the
+nearest frames for all seven cameras at those timestamps, so camera coverage
+is now a real measurement rather than a missing-file artifact.
+
+For external-object prompts, official Le3DE2E has 68.6% conservative
+referred-track availability at 2 m. The result changes from 71.7% at 1 m to
+59.2% at 4 m. The ground-truth oracle reaches 100% availability and 100%
+projection, which means the annotations and camera geometry are usable, but
+the oracle is not a deployable candidate generator.
+
+Tracker confidence reaches 0.533 mAP and candidate distance reaches 0.446 mAP
+on the official replay pool. These are data-source controls, not DriveOne
+results. Unmatched rows stay `UNMATCHED_TRACK`; the ranking diagnostic treats
+them as explicit non-referred tracker false positives without calling them
+`OTHER_OBJECT`.
+
+The decision is `REFAV_ORACLE_ONLY`. Keep RefAV only as an oracle-candidate or
+negative diagnostic unless an independent detector/tracker source is found.
+Do not add patch tokens, temporal frames, Qwen, distillation, trajectories, or
+deployment optimization on this branch.
+
+See [[../../refav_candidate_pool_decision|RefAV candidate-pool decision]] and
+the external report at
+`/ehsan/m.sadegh/driveone_assets/refav/candidate_source_audit_20261008_v3/candidate_source_audit.json`.

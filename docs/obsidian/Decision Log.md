@@ -38,3 +38,20 @@ projected-area controls, so patch tokens stay deferred.
 ## How to use this log
 
 Add future entries with date, decision, evidence, and what would cause the decision to be reversed. This keeps the research process auditable as the project grows.
+
+## 2026-10-08 — Keep RefAV as oracle-only
+
+**Decision:** Do not train DriveOne on the available Le3DE2E candidate pool.
+Keep RefAV as an oracle-candidate or negative diagnostic unless an independent
+detector/tracker source is found.
+
+**Evidence:** The official conversion was replayed on nine logs with all seven
+camera views at the native tracker timestamps. Conservative external-object
+availability was 68.6% at 2 m, with 71.7% at 1 m and 59.2% at 4 m. The
+ground-truth oracle reached 100% availability and projection. Tracker-score
+and distance controls reached 0.533 and 0.446 mAP on the official replay pool.
+
+**What would reverse it:** An independently generated, label-independent pool
+must reach at least 80% external referred availability, at least 90% projection,
+matching-threshold change no larger than 10 points, and no dominant metadata
+shortcut on the same candidates.

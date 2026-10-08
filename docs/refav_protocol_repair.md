@@ -125,3 +125,19 @@ decision: PROTOCOL_REPAIR_REQUIRED
 
 The official tracker-to-referred coverage and camera coverage already fail the
 gate.  Do not begin patch-token modeling or distillation on this branch.
+
+## Superseding candidate-source audit
+
+The follow-up audit replayed the official RefAV Le3DE2E conversion on the
+native tracker timestamp grid and downloaded the nearest frame for all seven
+ring cameras at those timestamps. The earlier 20.8% figure used all prompt
+timestamps, including timestamps where the event was absent, so it was not the
+right denominator for tracker recall.
+
+On external-object prompts, official Le3DE2E has 68.6% conservative referred
+track availability at 2 m, with 71.7% at 1 m and 59.2% at 4 m. The ground-truth
+oracle reaches 100% availability and projection. The source audit therefore
+ends in `REFAV_ORACLE_ONLY`: the sensor and annotation data are usable for an
+oracle-candidate diagnostic, but the available tracker is not a fair
+deployment-like candidate source. See
+[`refav_candidate_pool_decision.md`](refav_candidate_pool_decision.md).
