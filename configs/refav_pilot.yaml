@@ -190,7 +190,7 @@ frozen_pooled_baseline_gate:
   gate_version: refav-frozen-pooled-baseline-gate-v1
   source: le3de2e_causal
   export_manifest: "/ehsan/m.sadegh/driveone_assets/refav/refav_baseline_gate_v1/refav_baseline_export_manifest.json"
-  export_manifest_sha256: "126d363fa27486ef98eff240faecd374a7fde462598310ecb9e4334a24d0f06b"
+  export_manifest_sha256: "3393ffdbb71b9afc9b0d945444c9b93d144935d0950a5f5b958d9104db24b4fd"
   feature_config: PE-Core-L14-336
   feature_cache: "/ehsan/m.sadegh/driveone_assets/refav/refav_baseline_gate_v1/pe_core_pooled_features.pt"
   feature_cache_sha256: "36e2564e89dbedc9db2a3e046f734d843d135e3f2396a6733b6f84f9ff1da00f"
@@ -213,7 +213,7 @@ frozen_pooled_baseline_gate:
     seed1: "/ehsan/m.sadegh/driveone_assets/refav/refav_baseline_gate_v1/baseline_results_seed1.json"
     paired_comparison: "/ehsan/m.sadegh/driveone_assets/refav/refav_baseline_gate_v1/seed_comparison.json"
     report: "/ehsan/m.sadegh/driveone_assets/refav/refav_baseline_gate_v1/baseline_gate_report.json"
-    report_sha256: "35476dd4d0d9f1129919513b1ba989617b35263c02dd8c7944ccf47b7d668217"
+    report_sha256: "6f686a4d4c3a8a9c923bc4809737a51d1cbdeca8b13c2f5e7fb958509da3640c"
   decision: POOLED_BASELINE_GATE_FAILED
   proceed_to_patch_tokens: false
   reason: "Pooled PE is below task ID, metadata-only, candidate-only, and fixed front-center projected-area controls; calibration is worse."

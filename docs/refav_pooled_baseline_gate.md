@@ -41,7 +41,7 @@ The complete data and result files are outside Git at:
 The main report is `baseline_gate_report.json`. It records paths, hashes,
 timings, stratified metrics, and the final decision.
 Its SHA-256 is
-`35476dd4d0d9f1129919513b1ba989617b35263c02dd8c7944ccf47b7d668217`.
+`6f686a4d4c3a8a9c923bc4809737a51d1cbdeca8b13c2f5e7fb958509da3640c`.
 
 ## Protocol
 
@@ -112,7 +112,8 @@ The baseline JSON records JSONL parsing, image-file validation, cached feature
 loading, tensor construction, training, and cached-feature scoring. It does
 not measure end-to-end deployment latency. In particular, it excludes image
 decoding during deployment, PE image encoding, candidate construction,
-calibration, and postprocessing. CPU extraction of the missing PE cache took
+calibration, and postprocessing. The adapter itself took 120.1 seconds to
+build the prompt-expanded export. CPU extraction of the missing PE cache took
 157.4 seconds for 86 images and 33 prompts.
 
 ## Decision

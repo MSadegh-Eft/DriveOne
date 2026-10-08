@@ -187,6 +187,7 @@ def main() -> int:
             "unknown_label_policy": export_manifest["unknown_labels"],
             "split_counts": export_manifest["outputs"]["splits"],
             "source": export_manifest["source"],
+            "adapter_timing_seconds": export_manifest.get("timings_seconds", {}),
         },
         "data_checks": data_checks,
         "split_stream_checks": split_data,

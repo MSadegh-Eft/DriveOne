@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +59,7 @@ def main() -> int:
     parser.add_argument("--shuffle-seed", type=int, default=0)
     args = parser.parse_args()
 
+    adapter_start = time.perf_counter()
     groups = read_groups(args.audit_dir / "groups.jsonl", args.source)
     if not groups:
         raise SystemExit(f"No groups for source {args.source}")
@@ -75,6 +77,7 @@ def main() -> int:
         camera_name=args.camera,
     )
     output_manifest = write_baseline_exports(rows_by_split, args.output_dir)
+    adapter_elapsed = time.perf_counter() - adapter_start
     manifest = {
         "protocol": "refav-frozen-pooled-baseline-v1",
         "source": args.source,
@@ -100,6 +103,7 @@ def main() -> int:
             "candidate_ids_shuffled_per_group": True,
         },
         "unknown_labels": "None; retained in evaluation and omitted from BCE loss",
+        "timings_seconds": {"adapter_total": adapter_elapsed},
         "geometry": "v6 city-frame translation transformed to ego frame using official AV2 pose",
         "groups": len(groups),
         "logs": logs,
